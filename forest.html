@@ -30,12 +30,10 @@
     </script>
 
     <script type="module">
-        import * as THREE from 'three';
+     import * as THREE from 'three';
 
 // --- SCENE SETUP ---
 const scene = new THREE.Scene();
-
-// SICKLY FOG: A murky, dark brownish-green to mix the red/green vibe
 scene.fog = new THREE.FogExp2(0x151810, 0.025); 
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
@@ -45,32 +43,22 @@ renderer.setClearColor(0x050505);
 document.body.appendChild(renderer.domElement);
 
 // --- LIGHTING ---
-// AMBIENT: Brighter olive-green base so the player can navigate without a flashlight
 const ambientLight = new THREE.AmbientLight(0x556644, 1.2); 
 scene.add(ambientLight);
 
-// RED MOONLIGHT: Casts a subtle red tint over the green world
 const bloodMoonLight = new THREE.DirectionalLight(0xaa4444, 1.0);
 bloodMoonLight.position.set(-100, 200, -100);
 scene.add(bloodMoonLight);
 
 // --- ELEVATION MATH ---
-// This function calculates the height of the ground at any given X/Z coordinate
 function getElevation(x, z) {
     const distFromCenter = Math.sqrt(x * x + z * z);
-    
-    // Flat center for the pentagram
     if (distFromCenter < 12) return 0;
     
-    // Flattened hills (reduced the multipliers from 3.5 to 1.5)
     let height = Math.sin(x * 0.1) * Math.cos(z * 0.1) * 1.5 + Math.sin(x * 0.05) * 0.8;
-    
-    // Smoothly blend the flat center into the hills so there is no cliff
     if (distFromCenter < 18) {
-        const blend = (distFromCenter - 12) / 6; // Goes from 0 to 1
-        height *= blend;
+        height *= (distFromCenter - 12) / 6; 
     }
-    
     return height;
 }
 
@@ -87,58 +75,78 @@ const geometry = new THREE.PlaneGeometry(terrainSize, terrainSize, segments, seg
 
 const vertices = geometry.attributes.position.array;
 for (let i = 0; i < vertices.length; i += 3) {
-    // Plane geometry is X/Y, but rotated it becomes world X/Z
     const px = vertices[i];
     const pz = -vertices[i + 1]; 
-    
-    // Apply our elevation math
     vertices[i + 2] = getElevation(px, pz);
 }
 geometry.computeVertexNormals();
 
 const material = new THREE.MeshStandardMaterial({ 
-    map: grassTex, 
-    roughness: 0.9,
-    color: 0x99aa88 // Tinting the grass slightly to match the sickly lighting
+    map: grassTex, roughness: 0.9, color: 0x99aa88 
 });
 const terrain = new THREE.Mesh(geometry, material);
 terrain.rotation.x = -Math.PI / 2;
 scene.add(terrain);
 
-// --- BILLBOARD TREES ---
+// --- BILLBOARD TREES (WITH COLLISION & CYLINDRICAL ROTATION) ---
 const treeTex1 = loader.load('textures/singulartree.png');
 const treeTex2 = loader.load('textures/smalltreecluster.png');
 const treeTex3 = loader.load('textures/treecluster.png');
 
-// Slightly tinting trees so they fit the ambient light
+// alphaTest is CRITICAL for meshes with transparent textures. It tells the renderer
+// to completely ignore clear pixels, preventing weird visual glitches when trees overlap.
+// color: 0x111811 heavily tints the images almost pitch black.
+const treeMatConfig = { transparent: true, alphaTest: 0.5, side: THREE.DoubleSide, color: 0x111811 };
 const treeMaterials = [
-    new THREE.SpriteMaterial({ map: treeTex1, color: 0xdddddd, fog: true }),
-    new THREE.SpriteMaterial({ map: treeTex2, color: 0xdddddd, fog: true }),
-    new THREE.SpriteMaterial({ map: treeTex3, color: 0xdddddd, fog: true })
+    new THREE.MeshStandardMaterial({ map: treeTex1, ...treeMatConfig }),
+    new THREE.MeshStandardMaterial({ map: treeTex2, ...treeMatConfig }),
+    new THREE.MeshStandardMaterial({ map: treeTex3, ...treeMatConfig })
 ];
 
-const treeCount = 800; // Density of the forest
+const treeGeo = new THREE.PlaneGeometry(1, 1); 
+const treeData = []; // Array to store tree data for collision and rotation
+
+const treeCount = 800; 
 for (let i = 0; i < treeCount; i++) {
     const x = (Math.random() - 0.5) * terrainSize;
     const z = (Math.random() - 0.5) * terrainSize;
     
-    // Don't spawn trees inside the ritual site
     if (Math.sqrt(x * x + z * z) < 18) continue;
     
-    // Pick a random tree texture
-    const mat = treeMaterials[Math.floor(Math.random() * treeMaterials.length)];
-    const treeSprite = new THREE.Sprite(mat);
+    const rand = Math.random();
+    let mat, width, height, indent, colRadius;
     
-    // Randomize tree sizes slightly
-    const width = 10 + Math.random() * 10; // 10 to 20 units wide
-    const height = 15 + Math.random() * 15; // 15 to 30 units tall
-    treeSprite.scale.set(width, height, 1);
+    // Assign specific properties based on the tree type
+    if (rand < 0.33) {
+        mat = treeMaterials[0]; // Singular
+        width = 10 + Math.random() * 5; 
+        height = 15 + Math.random() * 10;
+        indent = 1.0; 
+        colRadius = 1.5; 
+    } else if (rand < 0.66) {
+        mat = treeMaterials[1]; // Small cluster
+        width = 15 + Math.random() * 5; 
+        height = 18 + Math.random() * 10;
+        indent = 2.5; 
+        colRadius = 3.0;
+    } else {
+        mat = treeMaterials[2]; // Large cluster
+        width = 20 + Math.random() * 10; 
+        height = 20 + Math.random() * 10;
+        indent = 4.0; 
+        colRadius = 5.0;
+    }
+
+    const treeMesh = new THREE.Mesh(treeGeo, mat);
+    treeMesh.scale.set(width, height, 1);
     
-    // Place tree exactly on top of the terrain height
     const groundY = getElevation(x, z);
-    treeSprite.position.set(x, groundY + height / 2, z);
+    // Sink the tree into the ground by subtracting 'indent'
+    treeMesh.position.set(x, groundY + (height / 2) - indent, z);
     
-    scene.add(treeSprite);
+    scene.add(treeMesh);
+    
+    treeData.push({ mesh: treeMesh, x: x, z: z, radius: colRadius });
 }
 
 // --- STARS & MOON ---
@@ -182,6 +190,113 @@ const redLight = new THREE.PointLight(0xff0000, 25, 35);
 redLight.position.set(0, 2, 0);
 scene.add(redLight);
 
+// --- PLAYER START ---
+camera.position.set(0, 1.7, 5); 
+camera.rotation.order = 'YXZ'; 
+
+// --- MOVEMENT LOGIC ---
+let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+const velocity = new THREE.Vector3();
+const direction = new THREE.Vector3();
+
+const onKeyDown = (e) => {
+    switch (e.code) {
+        case 'KeyW': moveForward = true; break;
+        case 'KeyA': moveLeft = true; break;
+        case 'KeyS': moveBackward = true; break;
+        case 'KeyD': moveRight = true; break;
+    }
+};
+const onKeyUp = (e) => {
+    switch (e.code) {
+        case 'KeyW': moveForward = false; break;
+        case 'KeyA': moveLeft = false; break;
+        case 'KeyS': moveBackward = false; break;
+        case 'KeyD': moveRight = false; break;
+    }
+};
+document.addEventListener('keydown', onKeyDown);
+document.addEventListener('keyup', onKeyUp);
+
+document.body.addEventListener('click', () => document.body.requestPointerLock());
+
+document.addEventListener('mousemove', (e) => {
+    if (document.pointerLockElement === document.body) {
+        camera.rotation.y -= e.movementX * 0.002;
+        camera.rotation.x -= e.movementY * 0.002;
+        camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
+    }
+});
+
+// --- GAME LOOP ---
+const clock = new THREE.Clock();
+function animate() {
+    requestAnimationFrame(animate);
+    const delta = clock.getDelta();
+
+    // 1. Save old position before moving
+    const oldX = camera.position.x;
+    const oldZ = camera.position.z;
+
+    // 2. Apply momentum
+    velocity.x -= velocity.x * 10.0 * delta;
+    velocity.z -= velocity.z * 10.0 * delta;
+
+    direction.z = Number(moveForward) - Number(moveBackward);
+    direction.x = Number(moveRight) - Number(moveLeft);
+    direction.normalize();
+
+    if (moveForward || moveBackward) velocity.z -= direction.z * 100.0 * delta;
+    if (moveLeft || moveRight) velocity.x -= direction.x * 100.0 * delta;
+
+    // 3. Move camera
+    camera.translateX(-velocity.x * delta);
+    camera.translateZ(-velocity.z * delta);
+    
+    // 4. Collision & Billboarding Update Loop
+    let isColliding = false;
+    for (let i = 0; i < treeData.length; i++) {
+        const tree = treeData[i];
+        
+        // --- Cylindrical Billboarding ---
+        // Forces the tree to look at the player, keeping its Y axis locked
+        tree.mesh.lookAt(camera.position.x, tree.mesh.position.y, camera.position.z);
+        
+        // --- Collision Check ---
+        const dx = camera.position.x - tree.x;
+        const dz = camera.position.z - tree.z;
+        // Fast distance check without square root
+        if ((dx * dx + dz * dz) < (tree.radius * tree.radius)) {
+            isColliding = true;
+        }
+    }
+
+    // 5. If we hit a tree, revert position and kill momentum
+    if (isColliding) {
+        camera.position.x = oldX;
+        camera.position.z = oldZ;
+        velocity.x = 0;
+        velocity.z = 0;
+    }
+
+    // 6. Height lock
+    const currentGroundHeight = getElevation(camera.position.x, camera.position.z);
+    camera.position.y = currentGroundHeight + 1.7; 
+
+    // Animate pentagram
+    const time = Date.now();
+    pentagram.material.opacity = 0.4 + Math.sin(time * 0.002) * 0.4;
+    redLight.intensity = 15 + Math.sin(time * 0.005) * 10;
+
+    renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
 // --- PLAYER START ---
 camera.position.set(0, 1.7, 5); 
 camera.rotation.order = 'YXZ'; 
