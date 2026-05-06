@@ -34,8 +34,6 @@
 
         // --- SCENE SETUP ---
         const scene = new THREE.Scene();
-        
-        // FOG: Increased density to 0.045 to make the fog much thicker and closer
         scene.fog = new THREE.FogExp2(0x151810, 0.045); 
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
@@ -83,7 +81,6 @@
         }
         geometry.computeVertexNormals();
 
-        // GRASS: Changed color to 0xffffff to remove the artificial red/green tint
         const material = new THREE.MeshStandardMaterial({ 
             map: grassTex, roughness: 0.9, color: 0xffffff 
         });
@@ -187,6 +184,48 @@
         redLight.position.set(0, 2, 0);
         scene.add(redLight);
 
+        // --- CANDLES ---
+        const candleTex = loader.load('textures/candle.png');
+        const candleMat = new THREE.MeshStandardMaterial({ 
+            map: candleTex, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide 
+        });
+        const candleGeo = new THREE.PlaneGeometry(1, 1.5); // Adjust width/height as needed
+        const candles = [];
+        const radius = 5.5; // Radius to place candles around the pentagram
+
+        for(let i = 0; i < 5; i++) {
+            const angle = (i / 5) * Math.PI * 2;
+            const cx = Math.cos(angle) * radius;
+            const cz = Math.sin(angle) * radius;
+            
+            const candleMesh = new THREE.Mesh(candleGeo, candleMat);
+            const groundY = getElevation(cx, cz);
+            
+            // Position candle directly on the ground
+            candleMesh.position.set(cx, groundY + 0.75, cz); 
+            scene.add(candleMesh);
+            candles.push(candleMesh);
+        }
+
+        // --- GHOST SETUP (FOR LATER AI) ---
+        const ghostTex = loader.load('textures/ghost.png');
+        // Emissive adds a slight glow in the dark
+        const ghostMat = new THREE.MeshStandardMaterial({ 
+            map: ghostTex, transparent: true, alphaTest: 0.1, 
+            side: THREE.DoubleSide, emissive: 0x112233 
+        });
+        const ghostGeo = new THREE.PlaneGeometry(4, 8); // Scale as needed
+        const ghostMesh = new THREE.Mesh(ghostGeo, ghostMat);
+        
+        // Naming the mesh so you can easily reference it in your external ghost.js
+        ghostMesh.name = 'TheGhost'; 
+        
+        const gStartX = -20;
+        const gStartZ = -20;
+        // Float the ghost a bit higher than the ground
+        ghostMesh.position.set(gStartX, getElevation(gStartX, gStartZ) + 4, gStartZ);
+        scene.add(ghostMesh);
+
         // --- PLAYER START ---
         camera.position.set(0, 1.7, 5); 
         camera.rotation.order = 'YXZ'; 
@@ -251,6 +290,7 @@
             for (let i = 0; i < treeData.length; i++) {
                 const tree = treeData[i];
                 
+                // Trees look at player
                 tree.mesh.lookAt(camera.position.x, tree.mesh.position.y, camera.position.z);
                 
                 const dx = camera.position.x - tree.x;
@@ -267,12 +307,24 @@
                 velocity.z = 0;
             }
 
+            // --- CYLINDRICAL BILLBOARDING FOR PROPS ---
+            // Candles look at player
+            candles.forEach(candle => {
+                candle.lookAt(camera.position.x, candle.position.y, camera.position.z);
+            });
+            // Ghost looks at player
+            ghostMesh.lookAt(camera.position.x, ghostMesh.position.y, camera.position.z);
+
             const currentGroundHeight = getElevation(camera.position.x, camera.position.z);
             camera.position.y = currentGroundHeight + 1.7; 
 
+            // Animate pentagram
             const time = Date.now();
             pentagram.material.opacity = 0.4 + Math.sin(time * 0.002) * 0.4;
             redLight.intensity = 15 + Math.sin(time * 0.005) * 10;
+
+            // Ghost bobbing effect
+            ghostMesh.position.y = getElevation(ghostMesh.position.x, ghostMesh.position.z) + 4 + Math.sin(time * 0.003) * 0.5;
 
             renderer.render(scene, camera);
         }
@@ -283,6 +335,10 @@
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
+
+        // Uncomment and point to your AI file when ready!
+        // import { initGhostAI } from './ghost.js';
+        // initGhostAI(scene, camera);
     </script>
 </body>
 </html>
