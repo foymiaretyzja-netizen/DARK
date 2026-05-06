@@ -34,7 +34,9 @@
 
         // --- SCENE SETUP ---
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x151810, 0.025); 
+        
+        // FOG: Increased density to 0.045 to make the fog much thicker and closer
+        scene.fog = new THREE.FogExp2(0x151810, 0.045); 
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
         const renderer = new THREE.WebGLRenderer({ antialias: false }); 
@@ -81,21 +83,19 @@
         }
         geometry.computeVertexNormals();
 
+        // GRASS: Changed color to 0xffffff to remove the artificial red/green tint
         const material = new THREE.MeshStandardMaterial({ 
-            map: grassTex, roughness: 0.9, color: 0x99aa88 
+            map: grassTex, roughness: 0.9, color: 0xffffff 
         });
         const terrain = new THREE.Mesh(geometry, material);
         terrain.rotation.x = -Math.PI / 2;
         scene.add(terrain);
 
-        // --- BILLBOARD TREES (WITH COLLISION & CYLINDRICAL ROTATION) ---
+        // --- BILLBOARD TREES ---
         const treeTex1 = loader.load('textures/singulartree.png');
         const treeTex2 = loader.load('textures/smalltreecluster.png');
         const treeTex3 = loader.load('textures/treecluster.png');
 
-        // alphaTest is CRITICAL for meshes with transparent textures. It tells the renderer
-        // to completely ignore clear pixels, preventing weird visual glitches when trees overlap.
-        // color: 0x111811 heavily tints the images almost pitch black.
         const treeMatConfig = { transparent: true, alphaTest: 0.5, side: THREE.DoubleSide, color: 0x111811 };
         const treeMaterials = [
             new THREE.MeshStandardMaterial({ map: treeTex1, ...treeMatConfig }),
@@ -104,7 +104,7 @@
         ];
 
         const treeGeo = new THREE.PlaneGeometry(1, 1); 
-        const treeData = []; // Array to store tree data for collision and rotation
+        const treeData = []; 
 
         const treeCount = 800; 
         for (let i = 0; i < treeCount; i++) {
@@ -116,21 +116,20 @@
             const rand = Math.random();
             let mat, width, height, indent, colRadius;
             
-            // Assign specific properties based on the tree type
             if (rand < 0.33) {
-                mat = treeMaterials[0]; // Singular
+                mat = treeMaterials[0]; 
                 width = 10 + Math.random() * 5; 
                 height = 15 + Math.random() * 10;
                 indent = 1.0; 
                 colRadius = 1.5; 
             } else if (rand < 0.66) {
-                mat = treeMaterials[1]; // Small cluster
+                mat = treeMaterials[1]; 
                 width = 15 + Math.random() * 5; 
                 height = 18 + Math.random() * 10;
                 indent = 2.5; 
                 colRadius = 3.0;
             } else {
-                mat = treeMaterials[2]; // Large cluster
+                mat = treeMaterials[2]; 
                 width = 20 + Math.random() * 10; 
                 height = 20 + Math.random() * 10;
                 indent = 4.0; 
@@ -141,11 +140,9 @@
             treeMesh.scale.set(width, height, 1);
             
             const groundY = getElevation(x, z);
-            // Sink the tree into the ground by subtracting 'indent'
             treeMesh.position.set(x, groundY + (height / 2) - indent, z);
             
             scene.add(treeMesh);
-            
             treeData.push({ mesh: treeMesh, x: x, z: z, radius: colRadius });
         }
 
@@ -234,11 +231,9 @@
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
 
-            // 1. Save old position before moving
             const oldX = camera.position.x;
             const oldZ = camera.position.z;
 
-            // 2. Apply momentum
             velocity.x -= velocity.x * 10.0 * delta;
             velocity.z -= velocity.z * 10.0 * delta;
 
@@ -249,19 +244,15 @@
             if (moveForward || moveBackward) velocity.z -= direction.z * 100.0 * delta;
             if (moveLeft || moveRight) velocity.x -= direction.x * 100.0 * delta;
 
-            // 3. Move camera
             camera.translateX(-velocity.x * delta);
             camera.translateZ(-velocity.z * delta);
             
-            // 4. Collision & Billboarding Update Loop
             let isColliding = false;
             for (let i = 0; i < treeData.length; i++) {
                 const tree = treeData[i];
                 
-                // --- Cylindrical Billboarding ---
                 tree.mesh.lookAt(camera.position.x, tree.mesh.position.y, camera.position.z);
                 
-                // --- Collision Check ---
                 const dx = camera.position.x - tree.x;
                 const dz = camera.position.z - tree.z;
                 if ((dx * dx + dz * dz) < (tree.radius * tree.radius)) {
@@ -269,7 +260,6 @@
                 }
             }
 
-            // 5. If we hit a tree, revert position and kill momentum
             if (isColliding) {
                 camera.position.x = oldX;
                 camera.position.z = oldZ;
@@ -277,11 +267,9 @@
                 velocity.z = 0;
             }
 
-            // 6. Height lock
             const currentGroundHeight = getElevation(camera.position.x, camera.position.z);
             camera.position.y = currentGroundHeight + 1.7; 
 
-            // Animate pentagram
             const time = Date.now();
             pentagram.material.opacity = 0.4 + Math.sin(time * 0.002) * 0.4;
             redLight.intensity = 15 + Math.sin(time * 0.005) * 10;
