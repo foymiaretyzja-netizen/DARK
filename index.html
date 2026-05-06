@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DARK</title>
+    <style>
+        /* Base Retro & Horror Styling */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace; /* Classic retro terminal font */
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            user-select: none; /* Prevents text highlighting on click */
+        }
+
+        /* Logo States */
+        #logo {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0; /* Starts invisible (black screen) */
+            max-width: 80vw;
+            max-height: 80vh;
+            /* Handles both the fade-in and the movement to the left */
+            transition: opacity 3s ease-in, left 1.5s ease-in-out, transform 1.5s ease-in-out;
+        }
+
+        #logo.fade-in {
+            opacity: 1;
+        }
+
+        #logo.menu-mode {
+            left: 25%; /* Moves to the left side */
+            transform: translate(-50%, -50%) scale(0.8); /* Slightly shrinks the logo */
+        }
+
+        /* Menu Container States */
+        #menu {
+            position: absolute;
+            left: 55%;
+            top: 50%;
+            transform: translateY(-50%);
+            opacity: 0;
+            pointer-events: none; /* Prevents clicking before it's visible */
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            transition: opacity 1.5s ease-in;
+        }
+
+        #menu.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* Play Button Styling */
+        .menu-btn {
+            background: none;
+            border: none;
+            color: #555;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 2.5rem;
+            cursor: pointer;
+            text-align: left;
+            text-transform: uppercase;
+            letter-spacing: 8px;
+            transition: color 0.3s, text-shadow 0.3s;
+        }
+
+        .menu-btn:hover {
+            color: #fff;
+            text-shadow: 0 0 15px rgba(255, 255, 255, 0.8);
+        }
+    </style>
+</head>
+<body>
+
+    <img id="logo" src="textures/title.png" alt="DARK Logo">
+    
+    <div id="menu">
+        <button class="menu-btn" id="play-btn">Play</button>
+        </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const logo = document.getElementById('logo');
+            const menu = document.getElementById('menu');
+            const playBtn = document.getElementById('play-btn');
+            
+            let isMenuMode = false;
+            let introTimeout;
+
+            // 1. Start the slow fade-in shortly after load
+            setTimeout(() => {
+                if (!isMenuMode) logo.classList.add('fade-in');
+            }, 500);
+
+            // 2. Auto-transition to menu after viewing the logo for a few seconds
+            introTimeout = setTimeout(() => {
+                if (!isMenuMode) transitionToMenu();
+            }, 5000);
+
+            // 3. Click anywhere to bypass intro and snap to menu
+            document.addEventListener('click', (e) => {
+                // Ignore if we click the play button itself (to avoid double firing)
+                if (e.target === playBtn) return; 
+
+                if (!isMenuMode) {
+                    clearTimeout(introTimeout);
+                    transitionToMenu();
+                }
+            });
+
+            // Logic to move the logo and show the Play button
+            function transitionToMenu() {
+                isMenuMode = true;
+                
+                // Force opacity to 1 immediately in case the player clicked during the fade-in
+                logo.classList.add('fade-in'); 
+                
+                // Trigger CSS movement
+                logo.classList.add('menu-mode');
+                
+                // Fade in the menu slightly after the logo starts moving
+                setTimeout(() => {
+                    menu.classList.add('show');
+                }, 500);
+            }
+
+            // Play button click handler
+            playBtn.addEventListener('click', () => {
+                console.log("Initialize Game Engine...");
+                // Here is where you will transition into your WebGL/Canvas game state
+                // e.g., hide the UI overlay and start the rendering loop
+            });
+        });
+    </script>
+</body>
+</html>
