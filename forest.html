@@ -34,70 +34,88 @@
 
         // --- SCENE SETUP ---
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x000500, 0.05); // Thick dark green/black fog
+        
+        // THICK BLACK FOG: Pure black for maximum disorientation
+        scene.fog = new THREE.FogExp2(0x000000, 0.08); 
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: false }); // False for that retro aliased look
+        const renderer = new THREE.WebGLRenderer({ antialias: false }); 
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setClearColor(0x000000);
         document.body.appendChild(renderer.domElement);
 
         // --- LIGHTING ---
-        const ambientLight = new THREE.AmbientLight(0x404040, 0.5); // Very dim global light
+        // Dim Ambient: Barely visible base light
+        const ambientLight = new THREE.AmbientLight(0x111111, 0.2); 
         scene.add(ambientLight);
 
-        // --- TERRAIN (HILLS) ---
+        // MOONLIGHT: Pale blue directional light to define the hills
+        const moonlight = new THREE.DirectionalLight(0x444477, 0.8);
+        moonlight.position.set(50, 100, 50);
+        scene.add(moonlight);
+
+        // --- TERRAIN (HILLS WITH FLAT CENTER) ---
         const loader = new THREE.TextureLoader();
         const grassTex = loader.load('textures/grass.jpg');
         grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
-        grassTex.repeat.set(64, 64); // Tile the grass texture
+        grassTex.repeat.set(64, 64);
 
-        // Create a large plane with many segments for hill deformation
         const terrainSize = 500;
         const segments = 100;
         const geometry = new THREE.PlaneGeometry(terrainSize, terrainSize, segments, segments);
         
-        // Manipulate vertices to create hills
         const vertices = geometry.attributes.position.array;
         for (let i = 0; i < vertices.length; i += 3) {
             const x = vertices[i];
             const y = vertices[i + 1];
-            // Simple math-based hills (Sine waves combined)
-            // This creates organic rolling bumps without needing an external noise library
-            vertices[i + 2] = Math.sin(x * 0.1) * Math.cos(y * 0.1) * 2.5 + 
-                             Math.sin(x * 0.05) * 1.5;
+            
+            // Calculate distance from center to keep the ritual site flat
+            const distFromCenter = Math.sqrt(x * x + y * y);
+            
+            if (distFromCenter < 12) {
+                vertices[i + 2] = 0; // Flat ground for the pentagram
+            } else {
+                // Procedural hills
+                vertices[i + 2] = Math.sin(x * 0.1) * Math.cos(y * 0.1) * 2.5 + 
+                                 Math.sin(x * 0.05) * 1.5;
+            }
         }
-        geometry.computeVertexNormals(); // Fixes lighting on the hills
+        geometry.computeVertexNormals();
 
         const material = new THREE.MeshStandardMaterial({ 
             map: grassTex, 
-            roughness: 1 
+            roughness: 0.8 
         });
         const terrain = new THREE.Mesh(geometry, material);
-        terrain.rotation.x = -Math.PI / 2; // Lay it flat
+        terrain.rotation.x = -Math.PI / 2;
         scene.add(terrain);
 
-        // --- PENTAGRAM SITE ---
+        // --- PENTAGRAM SITE (FIXED CLIPPING) ---
         const pentaTex = loader.load('textures/pentagram.png');
         const pentaGeo = new THREE.PlaneGeometry(10, 10);
         const pentaMat = new THREE.MeshBasicMaterial({ 
             map: pentaTex, 
             transparent: true, 
-            color: 0xff0000, // Tint it red
-            side: THREE.DoubleSide 
+            color: 0xff0000, 
+            side: THREE.DoubleSide,
+            // Forces the pentagram to render above the grass even if they overlap
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1
         });
         const pentagram = new THREE.Mesh(pentaGeo, pentaMat);
         pentagram.rotation.x = -Math.PI / 2;
-        pentagram.position.y = 0.1; // Slightly above ground to prevent "z-fighting"
+        pentagram.position.y = 0.05; // Tiny height boost
         scene.add(pentagram);
 
-        // Red Glow Light
-        const redLight = new THREE.PointLight(0xff0000, 10, 20);
-        redLight.position.set(0, 2, 0);
+        // Pulsing Red Glow Light
+        const redLight = new THREE.PointLight(0xff0000, 15, 25);
+        redLight.position.set(0, 1.5, 0);
         scene.add(redLight);
 
         // --- PLAYER START ---
-        camera.position.set(0, 1.7, 5); // Start at center, eye level (1.7m)
+        camera.position.set(0, 1.7, 5); 
+        camera.rotation.order = 'YXZ'; 
         
         // --- BASIC MOVEMENT LOGIC ---
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
@@ -123,7 +141,6 @@
         document.addEventListener('keydown', onKeyDown);
         document.addEventListener('keyup', onKeyUp);
 
-        // Pointer Lock for Mouse Look
         document.body.addEventListener('click', () => {
             document.body.requestPointerLock();
         });
@@ -131,9 +148,11 @@
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement === document.body) {
                 camera.rotation.y -= e.movementX * 0.002;
+                // Added vertical looking for completeness
+                camera.rotation.x -= e.movementY * 0.002;
+                camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
             }
         });
-        camera.rotation.order = 'YXZ'; // Important for FPS-style looking
 
         // --- GAME LOOP ---
         const clock = new THREE.Clock();
@@ -155,18 +174,17 @@
             camera.translateX(-velocity.x * delta);
             camera.translateZ(-velocity.z * delta);
             
-            // Keep player on the ground (optional: follow hill height)
             camera.position.y = 1.7; 
 
-            // Make pentagram pulse slightly
-            pentagram.material.opacity = 0.5 + Math.sin(Date.now() * 0.002) * 0.5;
-            redLight.intensity = 5 + Math.sin(Date.now() * 0.005) * 5;
+            // Make pentagram pulse
+            const time = Date.now();
+            pentagram.material.opacity = 0.4 + Math.sin(time * 0.002) * 0.4;
+            redLight.intensity = 10 + Math.sin(time * 0.005) * 8;
 
             renderer.render(scene, camera);
         }
         animate();
 
-        // Handle Window Resize
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
