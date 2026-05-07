@@ -17,7 +17,6 @@
             z-index: 10;
         }
         
-        /* --- NEW OVERLAYS --- */
         #static-overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -75,7 +74,6 @@
         scene.fog = new THREE.FogExp2(0x151810, 0.045); 
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
-        // Important: Add camera to scene so objects attached to it (like the flashlight) render properly
         scene.add(camera); 
 
         const renderer = new THREE.WebGLRenderer({ antialias: false }); 
@@ -91,13 +89,12 @@
         bloodMoonLight.position.set(-100, 200, -100);
         scene.add(bloodMoonLight);
 
-        // --- FLASHLIGHT SETUP (For flashlight.js later) ---
-        // Creates a conical light pointing forward from the camera
+        // --- FLASHLIGHT SETUP ---
         const flashlight = new THREE.SpotLight(0xffeedd, 150, 80, Math.PI / 7, 0.5, 1.5);
-        flashlight.position.set(0, -0.2, 0); // Slightly below eye level
+        flashlight.position.set(0, -0.2, 0); 
         camera.add(flashlight);
         camera.add(flashlight.target);
-        flashlight.target.position.set(0, -0.2, -1); // Point directly in front of the camera
+        flashlight.target.position.set(0, -0.2, -1); 
 
         // --- ELEVATION MATH ---
         function getElevation(x, z) {
@@ -118,7 +115,7 @@
         grassTex.repeat.set(100, 100);
         grassTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
 
-        const terrainSize = 1000; // INCREASED MAP SIZE
+        const terrainSize = 1000; 
         const segments = 150;
         const geometry = new THREE.PlaneGeometry(terrainSize, terrainSize, segments, segments);
 
@@ -152,7 +149,7 @@
         const treeGeo = new THREE.PlaneGeometry(1, 1); 
         const treeData = []; 
 
-        const treeCount = 1800; // Increased to match new map size
+        const treeCount = 1800; 
         for (let i = 0; i < treeCount; i++) {
             const x = (Math.random() - 0.5) * terrainSize;
             const z = (Math.random() - 0.5) * terrainSize;
@@ -187,6 +184,9 @@
             
             const groundY = getElevation(x, z);
             treeMesh.position.set(x, groundY + (height / 2) - indent, z);
+            
+            // Start all trees as hidden. We let the render loop decide what to show.
+            treeMesh.visible = false; 
             
             scene.add(treeMesh);
             treeData.push({ mesh: treeMesh, x: x, z: z, radius: colRadius });
@@ -262,12 +262,10 @@
             side: THREE.DoubleSide, emissive: 0x112233 
         });
         
-        // Made the ghost significantly smaller
         const ghostGeo = new THREE.PlaneGeometry(2, 4); 
         const ghostMesh = new THREE.Mesh(ghostGeo, ghostMat);
         ghostMesh.name = 'TheGhost'; 
         
-        // Added a glowing aura attached directly to the ghost
         const ghostGlow = new THREE.PointLight(0x88bbff, 40, 15);
         ghostGlow.position.set(0, 0, 0);
         ghostMesh.add(ghostGlow);
@@ -275,7 +273,6 @@
         const gStartX = -20;
         const gStartZ = -20;
         
-        // Positioned accurately without the floating animation
         ghostMesh.position.set(gStartX, getElevation(gStartX, gStartZ) + 2, gStartZ);
         scene.add(ghostMesh);
 
@@ -323,6 +320,10 @@
         const borderMsgElem = document.getElementById('border-message');
         const ghostMsgElem = document.getElementById('ghost-message');
 
+        // Render distance optimization (Squared to save CPU cycles)
+        const RENDER_DISTANCE = 80; 
+        const RENDER_DIST_SQ = RENDER_DISTANCE * RENDER_DISTANCE;
+
         // --- GAME LOOP ---
         const clock = new THREE.Clock();
         function animate() {
@@ -345,7 +346,7 @@
             camera.translateX(-velocity.x * delta);
             camera.translateZ(-velocity.z * delta);
             
-            // --- MAP BOUNDARY COLLISION & MESSAGE ---
+            // --- MAP BOUNDARY ---
             const mapLimit = (terrainSize / 2) - 5; 
             const distToEdgeX = mapLimit - Math.abs(camera.position.x);
             const distToEdgeZ = mapLimit - Math.abs(camera.position.z);
@@ -353,7 +354,6 @@
 
             if (minEdgeDist < 30) {
                 borderMsgElem.style.opacity = 1;
-                // Physical hard stop logic
                 if (camera.position.x > mapLimit) camera.position.x = mapLimit;
                 if (camera.position.x < -mapLimit) camera.position.x = -mapLimit;
                 if (camera.position.z > mapLimit) camera.position.z = mapLimit;
@@ -362,16 +362,27 @@
                 borderMsgElem.style.opacity = 0;
             }
 
-            // --- TREE COLLISION ---
+            // --- OPTIMIZED TREE CULLING & COLLISION ---
             let isColliding = false;
+            
             for (let i = 0; i < treeData.length; i++) {
                 const tree = treeData[i];
-                tree.mesh.lookAt(camera.position.x, tree.mesh.position.y, camera.position.z);
                 
                 const dx = camera.position.x - tree.x;
                 const dz = camera.position.z - tree.z;
-                if ((dx * dx + dz * dz) < (tree.radius * tree.radius)) {
-                    isColliding = true;
+                const distSq = dx * dx + dz * dz;
+                
+                // Only process trees within our designated render distance
+                if (distSq < RENDER_DIST_SQ) {
+                    tree.mesh.visible = true; // Turn rendering on
+                    tree.mesh.lookAt(camera.position.x, tree.mesh.position.y, camera.position.z); // Billboard
+                    
+                    // Only check for physical collision if it's very close
+                    if (distSq < (tree.radius * tree.radius)) {
+                        isColliding = true;
+                    }
+                } else {
+                    tree.mesh.visible = false; // Turn rendering off entirely (saves GPU/CPU)
                 }
             }
 
@@ -385,24 +396,17 @@
             // --- GHOST PROXIMITY MECHANICS ---
             const distToGhost = camera.position.distanceTo(ghostMesh.position);
 
-            // 1. Static Effect
             if (distToGhost < 30) {
-                // Closer you get, higher the intensity. Randomizer creates a heavy flicker.
                 const staticIntensity = 1 - (distToGhost / 30);
                 staticOverlay.style.opacity = staticIntensity * Math.random(); 
             } else {
                 staticOverlay.style.opacity = 0;
             }
 
-            // 2. Ghost Nearby Message
             if (distToGhost < 15 && !hasShownGhostMessage) {
                 hasShownGhostMessage = true;
                 ghostMsgElem.style.opacity = 1;
-                
-                // Fade out after 3 seconds
-                setTimeout(() => {
-                    ghostMsgElem.style.opacity = 0;
-                }, 3000);
+                setTimeout(() => { ghostMsgElem.style.opacity = 0; }, 3000);
             }
 
             // --- PROPS BILLBOARDING ---
@@ -430,7 +434,6 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // Uncomment and point to your AI file when ready!
         // import { initGhostAI } from './ghost.js';
         // initGhostAI(scene, camera);
         // import { initFlashlight } from './flashlight.js';
