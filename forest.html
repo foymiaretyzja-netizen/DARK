@@ -14,11 +14,49 @@
             font-family: 'Courier New', monospace;
             text-shadow: 2px 2px black;
             pointer-events: none;
+            z-index: 10;
+        }
+        
+        /* --- NEW OVERLAYS --- */
+        #static-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.1) 2px, rgba(255,255,255,0.1) 4px);
+            background-color: rgba(100, 100, 100, 0.2);
+            opacity: 0; 
+            pointer-events: none;
+            z-index: 5;
+            mix-blend-mode: difference;
+        }
+
+        .screen-message {
+            position: absolute;
+            top: 20%; left: 50%;
+            transform: translateX(-50%);
+            width: 500px; height: 150px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease-in-out;
+            z-index: 20;
+        }
+
+        #border-message {
+            background-image: url('textures/bordermessage.png');
+        }
+
+        #ghost-message {
+            background-image: url('textures/ghostnearbymessage.png');
         }
     </style>
 </head>
 <body>
 
+    <div id="static-overlay"></div>
+    <div id="border-message" class="screen-message"></div>
+    <div id="ghost-message" class="screen-message"></div>
     <div id="ui">Location: The Heart of the Woods</div>
 
     <script type="importmap">
@@ -37,6 +75,9 @@
         scene.fog = new THREE.FogExp2(0x151810, 0.045); 
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+        // Important: Add camera to scene so objects attached to it (like the flashlight) render properly
+        scene.add(camera); 
+
         const renderer = new THREE.WebGLRenderer({ antialias: false }); 
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setClearColor(0x050505); 
@@ -49,6 +90,14 @@
         const bloodMoonLight = new THREE.DirectionalLight(0xaa4444, 1.0);
         bloodMoonLight.position.set(-100, 200, -100);
         scene.add(bloodMoonLight);
+
+        // --- FLASHLIGHT SETUP (For flashlight.js later) ---
+        // Creates a conical light pointing forward from the camera
+        const flashlight = new THREE.SpotLight(0xffeedd, 150, 80, Math.PI / 7, 0.5, 1.5);
+        flashlight.position.set(0, -0.2, 0); // Slightly below eye level
+        camera.add(flashlight);
+        camera.add(flashlight.target);
+        flashlight.target.position.set(0, -0.2, -1); // Point directly in front of the camera
 
         // --- ELEVATION MATH ---
         function getElevation(x, z) {
@@ -66,11 +115,11 @@
         const loader = new THREE.TextureLoader();
         const grassTex = loader.load('textures/grass.jpg');
         grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
-        grassTex.repeat.set(64, 64);
+        grassTex.repeat.set(100, 100);
         grassTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
 
-        const terrainSize = 600;
-        const segments = 120;
+        const terrainSize = 1000; // INCREASED MAP SIZE
+        const segments = 150;
         const geometry = new THREE.PlaneGeometry(terrainSize, terrainSize, segments, segments);
 
         const vertices = geometry.attributes.position.array;
@@ -103,7 +152,7 @@
         const treeGeo = new THREE.PlaneGeometry(1, 1); 
         const treeData = []; 
 
-        const treeCount = 800; 
+        const treeCount = 1800; // Increased to match new map size
         for (let i = 0; i < treeCount; i++) {
             const x = (Math.random() - 0.5) * terrainSize;
             const z = (Math.random() - 0.5) * terrainSize;
@@ -165,8 +214,8 @@
         const moonTex = loader.load('textures/redmoon.png');
         const moonMat = new THREE.SpriteMaterial({ map: moonTex, color: 0xff8888, fog: false });
         const moon = new THREE.Sprite(moonMat);
-        moon.position.set(-300, 300, -400);
-        moon.scale.set(100, 100, 1);
+        moon.position.set(-400, 400, -500);
+        moon.scale.set(150, 150, 1);
         scene.add(moon);
 
         // --- PENTAGRAM ---
@@ -189,9 +238,9 @@
         const candleMat = new THREE.MeshStandardMaterial({ 
             map: candleTex, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide 
         });
-        const candleGeo = new THREE.PlaneGeometry(1, 1.5); // Adjust width/height as needed
+        const candleGeo = new THREE.PlaneGeometry(1, 1.5); 
         const candles = [];
-        const radius = 5.5; // Radius to place candles around the pentagram
+        const radius = 5.5; 
 
         for(let i = 0; i < 5; i++) {
             const angle = (i / 5) * Math.PI * 2;
@@ -201,29 +250,33 @@
             const candleMesh = new THREE.Mesh(candleGeo, candleMat);
             const groundY = getElevation(cx, cz);
             
-            // Position candle directly on the ground
             candleMesh.position.set(cx, groundY + 0.75, cz); 
             scene.add(candleMesh);
             candles.push(candleMesh);
         }
 
-        // --- GHOST SETUP (FOR LATER AI) ---
+        // --- GHOST SETUP ---
         const ghostTex = loader.load('textures/ghost.png');
-        // Emissive adds a slight glow in the dark
         const ghostMat = new THREE.MeshStandardMaterial({ 
             map: ghostTex, transparent: true, alphaTest: 0.1, 
             side: THREE.DoubleSide, emissive: 0x112233 
         });
-        const ghostGeo = new THREE.PlaneGeometry(4, 8); // Scale as needed
-        const ghostMesh = new THREE.Mesh(ghostGeo, ghostMat);
         
-        // Naming the mesh so you can easily reference it in your external ghost.js
+        // Made the ghost significantly smaller
+        const ghostGeo = new THREE.PlaneGeometry(2, 4); 
+        const ghostMesh = new THREE.Mesh(ghostGeo, ghostMat);
         ghostMesh.name = 'TheGhost'; 
         
+        // Added a glowing aura attached directly to the ghost
+        const ghostGlow = new THREE.PointLight(0x88bbff, 40, 15);
+        ghostGlow.position.set(0, 0, 0);
+        ghostMesh.add(ghostGlow);
+
         const gStartX = -20;
         const gStartZ = -20;
-        // Float the ghost a bit higher than the ground
-        ghostMesh.position.set(gStartX, getElevation(gStartX, gStartZ) + 4, gStartZ);
+        
+        // Positioned accurately without the floating animation
+        ghostMesh.position.set(gStartX, getElevation(gStartX, gStartZ) + 2, gStartZ);
         scene.add(ghostMesh);
 
         // --- PLAYER START ---
@@ -264,6 +317,12 @@
             }
         });
 
+        // --- EVENT STATES & UI DOM ELEMENTS ---
+        let hasShownGhostMessage = false;
+        const staticOverlay = document.getElementById('static-overlay');
+        const borderMsgElem = document.getElementById('border-message');
+        const ghostMsgElem = document.getElementById('ghost-message');
+
         // --- GAME LOOP ---
         const clock = new THREE.Clock();
         function animate() {
@@ -286,11 +345,27 @@
             camera.translateX(-velocity.x * delta);
             camera.translateZ(-velocity.z * delta);
             
+            // --- MAP BOUNDARY COLLISION & MESSAGE ---
+            const mapLimit = (terrainSize / 2) - 5; 
+            const distToEdgeX = mapLimit - Math.abs(camera.position.x);
+            const distToEdgeZ = mapLimit - Math.abs(camera.position.z);
+            const minEdgeDist = Math.min(distToEdgeX, distToEdgeZ);
+
+            if (minEdgeDist < 30) {
+                borderMsgElem.style.opacity = 1;
+                // Physical hard stop logic
+                if (camera.position.x > mapLimit) camera.position.x = mapLimit;
+                if (camera.position.x < -mapLimit) camera.position.x = -mapLimit;
+                if (camera.position.z > mapLimit) camera.position.z = mapLimit;
+                if (camera.position.z < -mapLimit) camera.position.z = -mapLimit;
+            } else {
+                borderMsgElem.style.opacity = 0;
+            }
+
+            // --- TREE COLLISION ---
             let isColliding = false;
             for (let i = 0; i < treeData.length; i++) {
                 const tree = treeData[i];
-                
-                // Trees look at player
                 tree.mesh.lookAt(camera.position.x, tree.mesh.position.y, camera.position.z);
                 
                 const dx = camera.position.x - tree.x;
@@ -307,14 +382,36 @@
                 velocity.z = 0;
             }
 
-            // --- CYLINDRICAL BILLBOARDING FOR PROPS ---
-            // Candles look at player
+            // --- GHOST PROXIMITY MECHANICS ---
+            const distToGhost = camera.position.distanceTo(ghostMesh.position);
+
+            // 1. Static Effect
+            if (distToGhost < 30) {
+                // Closer you get, higher the intensity. Randomizer creates a heavy flicker.
+                const staticIntensity = 1 - (distToGhost / 30);
+                staticOverlay.style.opacity = staticIntensity * Math.random(); 
+            } else {
+                staticOverlay.style.opacity = 0;
+            }
+
+            // 2. Ghost Nearby Message
+            if (distToGhost < 15 && !hasShownGhostMessage) {
+                hasShownGhostMessage = true;
+                ghostMsgElem.style.opacity = 1;
+                
+                // Fade out after 3 seconds
+                setTimeout(() => {
+                    ghostMsgElem.style.opacity = 0;
+                }, 3000);
+            }
+
+            // --- PROPS BILLBOARDING ---
             candles.forEach(candle => {
                 candle.lookAt(camera.position.x, candle.position.y, camera.position.z);
             });
-            // Ghost looks at player
             ghostMesh.lookAt(camera.position.x, ghostMesh.position.y, camera.position.z);
 
+            // Terrain Height Following
             const currentGroundHeight = getElevation(camera.position.x, camera.position.z);
             camera.position.y = currentGroundHeight + 1.7; 
 
@@ -322,9 +419,6 @@
             const time = Date.now();
             pentagram.material.opacity = 0.4 + Math.sin(time * 0.002) * 0.4;
             redLight.intensity = 15 + Math.sin(time * 0.005) * 10;
-
-            // Ghost bobbing effect
-            ghostMesh.position.y = getElevation(ghostMesh.position.x, ghostMesh.position.z) + 4 + Math.sin(time * 0.003) * 0.5;
 
             renderer.render(scene, camera);
         }
@@ -339,6 +433,8 @@
         // Uncomment and point to your AI file when ready!
         // import { initGhostAI } from './ghost.js';
         // initGhostAI(scene, camera);
+        // import { initFlashlight } from './flashlight.js';
+        // initFlashlight(flashlight);
     </script>
 </body>
 </html>
