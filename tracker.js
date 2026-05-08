@@ -17,10 +17,12 @@ export let pageLocations = [];
 
 export function initTracker(camera) {
     // 1. Create the Tracker Beam
-    // The base intensity starts at 0, we control it dynamically in updateBeamIntensity
     trackerLight = new THREE.SpotLight(0x44ff44, 0, 150, Math.PI / 8, 0.5, 2);
-    trackerLight.position.set(0.5, -0.5, -0.5); 
-    trackerLight.target.position.set(0, 0, -1);
+    
+    // Center the light slightly below the camera
+    trackerLight.position.set(0, -0.2, 0); 
+    // Push the target far out on the Z-axis so it points perfectly straight without skewing when you look up/down
+    trackerLight.target.position.set(0, -0.2, -20);
     
     camera.add(trackerLight);
     camera.add(trackerLight.target);
@@ -57,34 +59,58 @@ function toggleTracker() {
     }
 }
 
+// Casts an invisible line forward and checks if it intersects a page's radius
 function updateBeamIntensity(camera) {
     if (pageLocations.length === 0) {
         trackerLight.intensity = 50; // A dim green glow if no pages exist yet
         return;
     }
 
-    let maxDot = -1;
-    const camDir = new THREE.Vector3();
-    camera.getWorldDirection(camDir);
-    
     const camPos = new THREE.Vector3();
     camera.getWorldPosition(camPos);
+    
+    const camDir = new THREE.Vector3();
+    camera.getWorldDirection(camDir);
+
+    let isDetecting = false;
+    let closestLineDist = Infinity;
+    
+    // The "Aura" or radius around the page that the invisible line needs to touch
+    const PAGE_DETECTION_RADIUS = 12.0; 
 
     for (let pos of pageLocations) {
-        // Important: we ignore the Y axis so the player doesn't have to look up/down perfectly
-        const flatPos = new THREE.Vector3(pos.x, camPos.y, pos.z);
-        const dirToPage = new THREE.Vector3().subVectors(flatPos, camPos).normalize();
-        const dot = camDir.dot(dirToPage); 
-        if (dot > maxDot) maxDot = dot;
+        // Create a vector pointing from the camera to the page
+        const toPage = new THREE.Vector3().subVectors(pos, camPos);
+        
+        // Project that vector onto our camera's forward direction.
+        // This tells us exactly how far forward the page is along our line of sight.
+        const distanceForward = toPage.dot(camDir); 
+
+        // Only check pages that are actually in front of us, and within the light's range (150 units)
+        if (distanceForward > 0 && distanceForward < 150) {
+            
+            // Find the exact point on our invisible line that sits adjacent to the page
+            const pointOnLine = new THREE.Vector3().copy(camDir).multiplyScalar(distanceForward).add(camPos);
+            
+            // Calculate how far the page is from our line of sight
+            const distToLine = pointOnLine.distanceTo(pos);
+
+            // If the line passes within the page's radius, we are pointing at it!
+            if (distToLine < PAGE_DETECTION_RADIUS) {
+                isDetecting = true;
+                if (distToLine < closestLineDist) {
+                    closestLineDist = distToLine;
+                }
+            }
+        }
     }
 
-    // If our view is highly aligned with a page (dot > 0.85)
-    if (maxDot > 0.85) {
-        // Ramp intensity from 50 up to 800 the closer you look at it
-        const alignment = (maxDot - 0.85) / 0.15; 
-        trackerLight.intensity = 50 + (alignment * 750);
+    if (isDetecting) {
+        // Ramp intensity: It gets brighter the closer the invisible line is to the exact center of the page
+        const alignment = 1.0 - (closestLineDist / PAGE_DETECTION_RADIUS); 
+        trackerLight.intensity = 50 + (alignment * 750); // Ramps up to 800
     } else {
-        trackerLight.intensity = 50; 
+        trackerLight.intensity = 50; // Dim when not detecting anything
     }
 }
 
