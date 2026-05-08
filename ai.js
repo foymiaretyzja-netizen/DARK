@@ -13,8 +13,13 @@ const AGRO_TIME_LIMIT = 4.0;   // Seconds of staring before it attacks
 const SPEED_ROAM = 3.0;        // Slow wandering speed
 const SPEED_CHASE = 18.0;      // Very fast (requires sprinting to survive)
 
-// The mesh used for the jumpscare vision
 let visionGhost = null;
+let initialized = false;
+
+// Assets
+let texNormal, texChase;
+let ghostLight;
+let stareMessageUI;
 
 // Picks a random spot on the map for the ghost to walk towards
 function pickRandomTarget() {
@@ -52,22 +57,50 @@ function triggerVision() {
 }
 
 export function updateGhost(ghostMesh, camera, delta) {
-    // 1. Initialize the Vision Ghost on the first frame it runs
-    if (!visionGhost) {
+    // 1. Initialize everything on the first frame
+    if (!initialized) {
         const texLoader = new THREE.TextureLoader();
-        const tex = texLoader.load('textures/ghost.png');
-        // Basic material means lighting doesn't affect it—it glows perfectly in the dark
+        texNormal = texLoader.load('textures/ghost.png');
+        texChase = texLoader.load('textures/ghostchase.png');
+
+        // Setup the Jumpscare Vision Ghost
         const mat = new THREE.MeshBasicMaterial({ 
-            map: tex, transparent: true, opacity: 0.15, depthTest: false 
+            map: texNormal, transparent: true, opacity: 0.15, depthTest: false 
         });
         visionGhost = new THREE.Mesh(new THREE.PlaneGeometry(3, 6), mat);
-        
-        // Attach it physically to the front of the camera
         visionGhost.position.set(0, 0, -2.5);
         visionGhost.visible = false;
         camera.add(visionGhost);
         
+        // Randomize the initial spawn location
+        ghostMesh.position.x = (Math.random() - 0.5) * 300;
+        ghostMesh.position.z = (Math.random() - 0.5) * 300;
+
+        // Attach a red light to the ghost (Starts off)
+        ghostLight = new THREE.PointLight(0xff0000, 0, 25); 
+        ghostLight.position.set(0, 2, 0); 
+        ghostMesh.add(ghostLight);
+
+        // Dynamically create the Stare Message UI
+        stareMessageUI = document.createElement('div');
+        stareMessageUI.style.position = 'absolute';
+        stareMessageUI.style.top = '15%'; 
+        stareMessageUI.style.left = '50%';
+        stareMessageUI.style.transform = 'translateX(-50%)';
+        stareMessageUI.style.width = '400px';
+        stareMessageUI.style.height = '100px';
+        stareMessageUI.style.backgroundImage = "url('textures/ghostmessage.png')";
+        stareMessageUI.style.backgroundSize = 'contain';
+        stareMessageUI.style.backgroundRepeat = 'no-repeat';
+        stareMessageUI.style.backgroundPosition = 'center';
+        stareMessageUI.style.opacity = '0';
+        stareMessageUI.style.pointerEvents = 'none';
+        stareMessageUI.style.transition = 'opacity 0.5s ease-in-out';
+        stareMessageUI.style.zIndex = '30';
+        document.body.appendChild(stareMessageUI);
+        
         pickRandomTarget();
+        initialized = true;
     }
 
     const distToPlayer = ghostMesh.position.distanceTo(camera.position);
@@ -84,6 +117,9 @@ export function updateGhost(ghostMesh, camera, delta) {
 
     // 3. State Machine Logic
     if (state === 'ROAM') {
+        ghostMesh.material.map = texNormal;
+        ghostLight.intensity = 0;
+        stareMessageUI.style.opacity = '0';
         timeStaring = 0;
         
         // Player got too close!
@@ -100,7 +136,11 @@ export function updateGhost(ghostMesh, camera, delta) {
         }
     } 
     else if (state === 'STARE') {
-        // Stop moving, just stare. (forest.html already handles the rotation)
+        ghostMesh.material.map = texNormal;
+        ghostLight.intensity = 0;
+        stareMessageUI.style.opacity = '1'; // Show the stare message!
+        
+        // Stop moving, just stare
         timeStaring += delta;
         
         if (distToPlayer > STARE_DISTANCE + 5) {
@@ -110,6 +150,10 @@ export function updateGhost(ghostMesh, camera, delta) {
         }
     } 
     else if (state === 'CHASE') {
+        ghostMesh.material.map = texChase; // Swap texture
+        ghostLight.intensity = 5;          // Turn on the scary red glow
+        stareMessageUI.style.opacity = '0'; // Hide the message while running for your life
+        
         // Sprint at the player!
         moveTowards(ghostMesh, camera.position.x, camera.position.z, SPEED_CHASE, delta);
         
