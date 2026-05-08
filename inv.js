@@ -7,7 +7,7 @@ export const inventory = [
         id: 'battery', 
         name: 'Flashlight Battery', 
         img: 'textures/battery.png', 
-        desc: 'A standard D-cell battery. It still has some charge left. I should save this for when it gets completely dark.' 
+        desc: 'A standard D-cell battery. useful for charging the flashlight when the first batteries dies.' 
     }
 ];
 
