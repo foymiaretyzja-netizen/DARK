@@ -1,10 +1,13 @@
 import * as THREE from 'three';
+// Import the flashlight state so we know if the player is defending themselves
+import { isFlashlightActive } from './flashlight.js';
 
 // --- GHOST STATE ---
 let state = 'ROAM';
 let targetPos = new THREE.Vector3();
 let timeStaring = 0;
 let visionCooldown = 0;
+let lightBurnTimer = 0.0; // Tracks how long the flashlight has been burning the ghost
 
 // --- CONFIGURATION ---
 const STARE_DISTANCE = 40;     // How close until it stops and stares
@@ -12,6 +15,7 @@ const CHASE_DISTANCE = 60;     // How far you must run to escape it
 const AGRO_TIME_LIMIT = 4.0;   // Seconds of staring before it attacks
 const SPEED_ROAM = 3.0;        // Slow wandering speed
 const SPEED_CHASE = 18.0;      // Very fast (requires sprinting to survive)
+const BURN_TIME_REQUIRED = 3.0;// Seconds of direct light to banish the ghost
 
 let visionGhost = null;
 let initialized = false;
@@ -23,7 +27,7 @@ let stareMessageUI;
 
 // Picks a random spot on the map for the ghost to walk towards
 function pickRandomTarget() {
-    const range = 300;
+    const range = 400;
     targetPos.set(
         (Math.random() - 0.5) * range,
         0,
@@ -31,7 +35,7 @@ function pickRandomTarget() {
     );
 }
 
-// Moves the ghost only on the X and Z axis (forest.html handles the Y elevation)
+// Moves the ghost only on the X and Z axis
 function moveTowards(mesh, tx, tz, speed, delta) {
     const dx = tx - mesh.position.x;
     const dz = tz - mesh.position.z;
@@ -63,7 +67,6 @@ export function updateGhost(ghostMesh, camera, delta) {
         texNormal = texLoader.load('textures/ghost.png');
         texChase = texLoader.load('textures/ghostchase.png');
 
-        // Setup the Jumpscare Vision Ghost
         const mat = new THREE.MeshBasicMaterial({ 
             map: texNormal, transparent: true, opacity: 0.15, depthTest: false 
         });
@@ -72,16 +75,13 @@ export function updateGhost(ghostMesh, camera, delta) {
         visionGhost.visible = false;
         camera.add(visionGhost);
         
-        // Randomize the initial spawn location
         ghostMesh.position.x = (Math.random() - 0.5) * 300;
         ghostMesh.position.z = (Math.random() - 0.5) * 300;
 
-        // Attach a red light to the ghost (Starts off)
         ghostLight = new THREE.PointLight(0xff0000, 0, 25); 
         ghostLight.position.set(0, 2, 0); 
         ghostMesh.add(ghostLight);
 
-        // Dynamically create the Stare Message UI
         stareMessageUI = document.createElement('div');
         stareMessageUI.style.position = 'absolute';
         stareMessageUI.style.top = '15%'; 
@@ -105,31 +105,69 @@ export function updateGhost(ghostMesh, camera, delta) {
 
     const distToPlayer = ghostMesh.position.distanceTo(camera.position);
 
-    // 2. Handle Visions (Only happens when staring or chasing)
-    if (visionCooldown > 0) {
-        visionCooldown -= delta;
-    } else if ((state === 'STARE' || state === 'CHASE') && distToPlayer < STARE_DISTANCE + 10) {
-        // Random 2% chance per frame to trigger once cooldown is up
-        if (Math.random() < 0.02) {
-            triggerVision();
+    // 2. Handle Flashlight Banishment (The "Burn" Mechanic)
+    let isBeingLookedAt = false;
+
+    // Check if the standard flashlight is ON (the Tracker turns this variable to false automatically)
+    if (isFlashlightActive) {
+        const camDir = new THREE.Vector3();
+        camera.getWorldDirection(camDir);
+
+        const ghostDir = new THREE.Vector3().subVectors(ghostMesh.position, camera.position).normalize();
+        const dot = camDir.dot(ghostDir);
+
+        // If the player is shining the light directly at it (dot > 0.9) and it's within 80 units
+        if (dot > 0.9 && distToPlayer < 80) {
+            isBeingLookedAt = true;
         }
     }
 
-    // 3. State Machine Logic
+    if (isBeingLookedAt) {
+        lightBurnTimer += delta;
+        // Fade out as it burns
+        ghostMesh.material.opacity = Math.max(0, 1.0 - (lightBurnTimer / BURN_TIME_REQUIRED));
+
+        // Banished!
+        if (lightBurnTimer >= BURN_TIME_REQUIRED) {
+            // Teleport far away
+            pickRandomTarget();
+            ghostMesh.position.copy(targetPos);
+            
+            // Reset states
+            state = 'ROAM';
+            lightBurnTimer = 0;
+            timeStaring = 0;
+            ghostMesh.material.opacity = 1.0; // Restore opacity for next time
+            stareMessageUI.style.opacity = '0';
+            visionCooldown = 5.0; // Give the player a 5-second grace period from visions
+            return; // Skip the rest of the logic this frame
+        }
+    } else {
+        // Slowly recover opacity if the player looks away before the 3 seconds are up
+        if (lightBurnTimer > 0) {
+            lightBurnTimer -= delta;
+            ghostMesh.material.opacity = Math.min(1.0, 1.0 - (lightBurnTimer / BURN_TIME_REQUIRED));
+        }
+    }
+
+    // 3. Handle Visions
+    if (visionCooldown > 0) {
+        visionCooldown -= delta;
+    } else if ((state === 'STARE' || state === 'CHASE') && distToPlayer < STARE_DISTANCE + 10) {
+        if (Math.random() < 0.02) triggerVision();
+    }
+
+    // 4. State Machine Logic
     if (state === 'ROAM') {
         ghostMesh.material.map = texNormal;
         ghostLight.intensity = 0;
         stareMessageUI.style.opacity = '0';
         timeStaring = 0;
         
-        // Player got too close!
         if (distToPlayer < STARE_DISTANCE) {
             state = 'STARE';
         } else {
-            // Keep walking to target
             moveTowards(ghostMesh, targetPos.x, targetPos.z, SPEED_ROAM, delta);
-            
-            // If it reached its random point, pick a new one
             if (Math.abs(ghostMesh.position.x - targetPos.x) < 2 && Math.abs(ghostMesh.position.z - targetPos.z) < 2) {
                 pickRandomTarget();
             }
@@ -138,27 +176,25 @@ export function updateGhost(ghostMesh, camera, delta) {
     else if (state === 'STARE') {
         ghostMesh.material.map = texNormal;
         ghostLight.intensity = 0;
-        stareMessageUI.style.opacity = '1'; // Show the stare message!
+        stareMessageUI.style.opacity = '1'; 
         
-        // Stop moving, just stare
         timeStaring += delta;
         
         if (distToPlayer > STARE_DISTANCE + 5) {
-            state = 'ROAM'; // Player backed away carefully
+            state = 'ROAM'; 
         } else if (timeStaring >= AGRO_TIME_LIMIT) {
-            state = 'CHASE'; // Player stayed too long, ATTACK!
+            state = 'CHASE'; 
         }
     } 
     else if (state === 'CHASE') {
-        ghostMesh.material.map = texChase; // Swap texture
-        ghostLight.intensity = 5;          // Turn on the scary red glow
-        stareMessageUI.style.opacity = '0'; // Hide the message while running for your life
+        ghostMesh.material.map = texChase; 
+        ghostLight.intensity = Math.max(0, 5 * ghostMesh.material.opacity); // Dim red glow as it fades
+        stareMessageUI.style.opacity = '0'; 
         
-        // Sprint at the player!
         moveTowards(ghostMesh, camera.position.x, camera.position.z, SPEED_CHASE, delta);
         
         if (distToPlayer > CHASE_DISTANCE) {
-            state = 'ROAM'; // The player successfully outran it
+            state = 'ROAM'; 
         }
     }
 }
