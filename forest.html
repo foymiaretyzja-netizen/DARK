@@ -310,12 +310,13 @@ scene.add(bloodMoonLight);
 
             // ONLY update physics, AI, and Flashlight if the game is active
             if (!isGamePaused && !isInvOpen) {
+                // 1. Update Flashlight Battery
+                updateFlashlight(delta);
+
                 const oldX = camera.position.x;
                 const oldZ = camera.position.z;
 
-                // Update Flashlight Battery
-                updateFlashlight(delta);
-
+                // 2. Movement Physics
                 velocity.x -= velocity.x * 10.0 * delta;
                 velocity.z -= velocity.z * 10.0 * delta;
 
@@ -329,7 +330,7 @@ scene.add(bloodMoonLight);
                 camera.translateX(-velocity.x * delta);
                 camera.translateZ(-velocity.z * delta);
                 
-                // Boundaries
+                // 3. Boundaries
                 const mapLimit = (terrainSize / 2) - 5; 
                 const minEdgeDist = Math.min(mapLimit - Math.abs(camera.position.x), mapLimit - Math.abs(camera.position.z));
 
@@ -343,7 +344,7 @@ scene.add(bloodMoonLight);
                     borderMsgElem.style.opacity = 0;
                 }
 
-                // Culling & Collision
+                // 4. Culling & Collision
                 let isColliding = false;
                 for (let i = 0; i < treeData.length; i++) {
                     const tree = treeData[i];
@@ -363,7 +364,7 @@ scene.add(bloodMoonLight);
                     velocity.x = 0; velocity.z = 0;
                 }
 
-                // Call external AI and UI modules
+                // 5. Ghost AI & Static UI
                 const distToGhost = camera.position.distanceTo(ghostMesh.position);
                 updateUIStatic(distToGhost);
                 if (distToGhost < 15) showGhostWarning();
@@ -372,14 +373,17 @@ scene.add(bloodMoonLight);
                 ghostMesh.lookAt(camera.position.x, ghostMesh.position.y, camera.position.z);
                 camera.position.y = getElevation(camera.position.x, camera.position.z) + 1.7; 
                 
+                // 6. Environment Animation
                 cloudTex.offset.x += 0.02 * delta;
                 cloudTex.offset.y += 0.01 * delta;
             }
 
+            // Always render the scene
             renderer.render(scene, camera);
         }
 
-        animate(); // Start the loop
+        // Start the loop
+        animate();
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
