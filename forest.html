@@ -303,23 +303,18 @@ scene.add(bloodMoonLight);
         const borderMsgElem = document.getElementById('border-message');
         const RENDER_DIST_SQ = 230 * 230; 
         const clock = new THREE.Clock();
+// --- GAME LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
 
-        // --- GAME LOOP ---
-       function animate() {
-    requestAnimationFrame(animate);
-    const delta = clock.getDelta();
-
-    if (!isGamePaused && !isInvOpen) {
-        // ... movement code ...
-        updateFlashlight(delta); // This tracks the battery drain
-    }
-
-    renderer.render(scene, camera);
-}
-            // ONLY update physics and AI if the game is active (not paused, no inventory open)
+            // ONLY update physics, AI, and Flashlight if the game is active
             if (!isGamePaused && !isInvOpen) {
                 const oldX = camera.position.x;
                 const oldZ = camera.position.z;
+
+                // Update Flashlight Battery
+                updateFlashlight(delta);
 
                 velocity.x -= velocity.x * 10.0 * delta;
                 velocity.z -= velocity.z * 10.0 * delta;
@@ -383,7 +378,8 @@ scene.add(bloodMoonLight);
 
             renderer.render(scene, camera);
         }
-        animate();
+
+        animate(); // Start the loop
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
