@@ -1,3 +1,4 @@
+export let isFlashlightActive = false; // Make sure 'export' is written here!
 import * as THREE from 'three';
 import { toggleFlashlightUI, updateBatteryUI } from './ui.js';
 import { addItem } from './inv.js';
