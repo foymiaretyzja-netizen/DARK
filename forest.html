@@ -116,27 +116,31 @@
         import { createFlashlight } from './flashlight.js';
         import { updateUIStatic, showGhostWarning } from './ui.js';
         import { updateGhost } from './ai.js';
+        import { createFlashlight, updateFlashlight } from './flashlight.js';
 
-        // --- SCENE SETUP ---
-        const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x151810, 0.012); 
+       // --- SCENE SETUP ---
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x151810, 0.012); 
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
-        scene.add(camera); 
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+scene.add(camera); 
 
-        const renderer = new THREE.WebGLRenderer({ antialias: false }); 
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0x050505); 
-        document.body.appendChild(renderer.domElement);
+const renderer = new THREE.WebGLRenderer({ antialias: false }); 
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x050505); 
+document.body.appendChild(renderer.domElement);
 
-        // --- LIGHTING ---
-        const ambientLight = new THREE.AmbientLight(0x556644, 1.2); 
-        scene.add(ambientLight);
+// Initialize Flashlight (Attached to Camera)
+createFlashlight(camera);
 
-        const bloodMoonLight = new THREE.DirectionalLight(0xaa4444, 1.0);
-        bloodMoonLight.position.set(-100, 200, -100);
-        scene.add(bloodMoonLight);
+// --- LIGHTING ---
+const ambientLight = new THREE.AmbientLight(0x556644, 1.2); 
+scene.add(ambientLight);
 
+// Finishing your cut-off line:
+const bloodMoonLight = new THREE.DirectionalLight(0xaa4444, 1.0);
+bloodMoonLight.position.set(-100, 200, -100);
+scene.add(bloodMoonLight);
         // --- ELEVATION MATH ---
         function getElevation(x, z) {
             const distFromCenter = Math.sqrt(x * x + z * z);
@@ -226,7 +230,6 @@
             scene.add(treeMesh);
             treeData.push({ mesh: treeMesh, x: x, z: z, radius: colRadius });
         }
-
         // --- PROPS ---
         const moonTex = loader.load('textures/redmoon.png');
         const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: moonTex, color: 0xff8888, fog: false }));
@@ -302,10 +305,17 @@
         const clock = new THREE.Clock();
 
         // --- GAME LOOP ---
-        function animate() {
-            requestAnimationFrame(animate);
-            const delta = clock.getDelta();
+       function animate() {
+    requestAnimationFrame(animate);
+    const delta = clock.getDelta();
 
+    if (!isGamePaused && !isInvOpen) {
+        // ... movement code ...
+        updateFlashlight(delta); // This tracks the battery drain
+    }
+
+    renderer.render(scene, camera);
+}
             // ONLY update physics and AI if the game is active (not paused, no inventory open)
             if (!isGamePaused && !isInvOpen) {
                 const oldX = camera.position.x;
