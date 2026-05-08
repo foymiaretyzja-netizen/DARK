@@ -5,8 +5,8 @@
     <title>DARK - The Forest</title>
 
     <script>
-        // The ultimate crash catcher. This runs before modules even exist.
-        window.addEventListener('error', function(e) {
+        // The ultimate crash catcher. Upgraded to catch module loading failures.
+        function displayError(message, source, lineno) {
             const errorBox = document.createElement('div');
             errorBox.style.position = 'absolute';
             errorBox.style.top = '10%';
@@ -15,24 +15,30 @@
             errorBox.style.backgroundColor = '#aa0000';
             errorBox.style.color = 'white';
             errorBox.style.padding = '20px';
-            errorBox.style.zIndex = '999999'; // Force to very front
+            errorBox.style.zIndex = '999999';
             errorBox.style.fontFamily = 'monospace';
             errorBox.style.border = '2px solid white';
             
-            // Format the error nicely
             errorBox.innerHTML = `
                 <h2 style="margin-top:0;">CRASH DETECTED</h2>
-                <p><strong>Error:</strong> ${e.message}</p>
-                <p><strong>File:</strong> ${e.filename}</p>
-                <p><strong>Line:</strong> ${e.lineno}</p>
+                <p><strong>Error:</strong> ${message}</p>
+                <p><strong>Source:</strong> ${source || 'Unknown'}</p>
+                <p><strong>Line:</strong> ${lineno || 'N/A'}</p>
             `;
             
-            // Wait for the body to exist, then attach it
             if (document.body) {
                 document.body.appendChild(errorBox);
             } else {
                 window.addEventListener('DOMContentLoaded', () => document.body.appendChild(errorBox));
             }
+        }
+
+        window.addEventListener('error', function(e) {
+            displayError(e.message, e.filename, e.lineno);
+        });
+
+        window.addEventListener('unhandledrejection', function(e) {
+            displayError("Module Failed to Load (Check your import paths and filenames)", e.reason, "N/A");
         });
     </script>
 
@@ -44,7 +50,6 @@
             color: white; font-family: 'Courier New', monospace;
             text-shadow: 2px 2px black; pointer-events: none; z-index: 10;
         }
-        /* ... the rest of your CSS ... */
         #static-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.1) 2px, rgba(255,255,255,0.1) 4px);
@@ -130,8 +135,7 @@
             </div>
             <div id="inspect-text">Select an item to inspect.</div>
         </div>
-        <div id="inventory-slots">
-            </div>
+        <div id="inventory-slots"></div>
     </div>
 
     <script type="importmap">
@@ -146,39 +150,34 @@
         import * as THREE from 'three';
         import { isGamePaused, initTutorial } from './tut.js';
         import { initInventory, isInvOpen } from './inv.js';
-        
-        // I DELETED THE DUPLICATE FLASHLIGHT IMPORT HERE
-        
         import { updateUIStatic, showGhostWarning } from './ui.js';
         import { updateGhost } from './ai.js';
         import { createFlashlight, updateFlashlight } from './flashlight.js';
-        
-        import { initLogs } from './logs.js'; // <--- ADD THIS LINE
+        import { initLogs } from './logs.js'; 
 
         // --- SCENE SETUP ---
         const scene = new THREE.Scene();
-        // ... rest of your scene setup ...
-scene.fog = new THREE.FogExp2(0x151810, 0.012); 
+        scene.fog = new THREE.FogExp2(0x151810, 0.012); 
 
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
-scene.add(camera); 
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+        scene.add(camera); 
 
-const renderer = new THREE.WebGLRenderer({ antialias: false }); 
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x050505); 
-document.body.appendChild(renderer.domElement);
+        const renderer = new THREE.WebGLRenderer({ antialias: false }); 
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x050505); 
+        document.body.appendChild(renderer.domElement);
 
-// Initialize Flashlight (Attached to Camera)
-createFlashlight(camera);
+        // Initialize Flashlight (Attached to Camera)
+        createFlashlight(camera);
 
-// --- LIGHTING ---
-const ambientLight = new THREE.AmbientLight(0x556644, 1.2); 
-scene.add(ambientLight);
+        // --- LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0x556644, 1.2); 
+        scene.add(ambientLight);
 
-// Finishing your cut-off line:
-const bloodMoonLight = new THREE.DirectionalLight(0xaa4444, 1.0);
-bloodMoonLight.position.set(-100, 200, -100);
-scene.add(bloodMoonLight);
+        const bloodMoonLight = new THREE.DirectionalLight(0xaa4444, 1.0);
+        bloodMoonLight.position.set(-100, 200, -100);
+        scene.add(bloodMoonLight);
+
         // --- ELEVATION MATH ---
         function getElevation(x, z) {
             const distFromCenter = Math.sqrt(x * x + z * z);
@@ -268,6 +267,7 @@ scene.add(bloodMoonLight);
             scene.add(treeMesh);
             treeData.push({ mesh: treeMesh, x: x, z: z, radius: colRadius });
         }
+
         // --- PROPS ---
         const moonTex = loader.load('textures/redmoon.png');
         const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: moonTex, color: 0xff8888, fog: false }));
@@ -308,7 +308,6 @@ scene.add(bloodMoonLight);
         document.addEventListener('keydown', onKeyDown);
         document.addEventListener('keyup', onKeyUp);
 
-        // Click to lock pointer (unless inventory is open or game is paused)
         document.body.addEventListener('click', () => {
             if (!isGamePaused && !isInvOpen) {
                 document.body.requestPointerLock();
@@ -323,7 +322,7 @@ scene.add(bloodMoonLight);
             }
         });
 
-       // --- INITIALIZE UI MODULES ---
+        // --- INITIALIZE UI MODULES ---
         initLogs();
 
         initTutorial(() => {
@@ -335,20 +334,19 @@ scene.add(bloodMoonLight);
                 document.body.requestPointerLock();
             } else {
                 document.exitPointerLock();
-                // Stop player momentum when inventory opens
                 moveForward = false; moveBackward = false; moveLeft = false; moveRight = false;
             }
-        }); // <--- THIS IS THE MISSING BRACKET THAT CRASHED THE GAME
+        }); 
 
         const borderMsgElem = document.getElementById('border-message');
         const RENDER_DIST_SQ = 230 * 230; 
         const clock = new THREE.Clock();
-// --- GAME LOOP ---
+
+        // --- GAME LOOP ---
         function animate() {
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
 
-            // ONLY update physics, AI, and Flashlight if the game is active
             if (!isGamePaused && !isInvOpen) {
                 // 1. Update Flashlight Battery
                 updateFlashlight(delta);
@@ -418,11 +416,9 @@ scene.add(bloodMoonLight);
                 cloudTex.offset.y += 0.01 * delta;
             }
 
-            // Always render the scene
             renderer.render(scene, camera);
         }
 
-        // Start the loop
         animate();
 
         window.addEventListener('resize', () => {
