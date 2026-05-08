@@ -290,7 +290,9 @@ scene.add(bloodMoonLight);
             }
         });
 
-        // --- INITIALIZE UI MODULES ---
+       // --- INITIALIZE UI MODULES ---
+        initLogs();
+
         initTutorial(() => {
             document.body.requestPointerLock();
         });
@@ -303,13 +305,7 @@ scene.add(bloodMoonLight);
                 // Stop player momentum when inventory opens
                 moveForward = false; moveBackward = false; moveLeft = false; moveRight = false;
             }
-            // --- INITIALIZE UI MODULES ---
-        initLogs(); // <--- ADD THIS LINE
-
-        initTutorial(() => {
-            document.body.requestPointerLock();
-        });
-    
+        }); // <--- THIS IS THE MISSING BRACKET THAT CRASHED THE GAME
 
         const borderMsgElem = document.getElementById('border-message');
         const RENDER_DIST_SQ = 230 * 230; 
