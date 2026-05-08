@@ -113,13 +113,18 @@
         import * as THREE from 'three';
         import { isGamePaused, initTutorial } from './tut.js';
         import { initInventory, isInvOpen } from './inv.js';
-        import { createFlashlight } from './flashlight.js';
+        
+        // I DELETED THE DUPLICATE FLASHLIGHT IMPORT HERE
+        
         import { updateUIStatic, showGhostWarning } from './ui.js';
         import { updateGhost } from './ai.js';
         import { createFlashlight, updateFlashlight } from './flashlight.js';
+        
+        import { initLogs } from './logs.js'; // <--- ADD THIS LINE
 
-       // --- SCENE SETUP ---
-const scene = new THREE.Scene();
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        // ... rest of your scene setup ...
 scene.fog = new THREE.FogExp2(0x151810, 0.012); 
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
@@ -298,7 +303,13 @@ scene.add(bloodMoonLight);
                 // Stop player momentum when inventory opens
                 moveForward = false; moveBackward = false; moveLeft = false; moveRight = false;
             }
+            // --- INITIALIZE UI MODULES ---
+        initLogs(); // <--- ADD THIS LINE
+
+        initTutorial(() => {
+            document.body.requestPointerLock();
         });
+    
 
         const borderMsgElem = document.getElementById('border-message');
         const RENDER_DIST_SQ = 230 * 230; 
