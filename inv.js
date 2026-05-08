@@ -1,7 +1,15 @@
 import { reloadFlashlight } from './flashlight.js';
 
 export let isInvOpen = false;
+
+// Starting Inventory
 export let inventory = [
+    { 
+        id: 'flashlight', 
+        name: 'Heavy Flashlight', 
+        img: 'textures/flashlight.png', 
+        desc: 'A heavy-duty metal flashlight. Its beam cuts through the thickest darkness, but it chews through power. Use it wisely.' 
+    },
     { 
         id: 'battery', 
         name: 'Flashlight Battery', 
