@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-// Import the flashlight state so we know if the player is defending themselves
-import { isFlashlightActive } from './flashlight.js';
+// Import BOTH flashlight states
+import { isFlashlightActive, isFlashing } from './flashlight.js';
 
 // --- GHOST STATE ---
 let state = 'ROAM';
@@ -105,18 +105,40 @@ export function updateGhost(ghostMesh, camera, delta) {
 
     const distToPlayer = ghostMesh.position.distanceTo(camera.position);
 
-    // 2. Handle Flashlight Banishment (The "Burn" Mechanic)
-    let isBeingLookedAt = false;
-
-    // Check if the standard flashlight is ON (the Tracker turns this variable to false automatically)
-    if (isFlashlightActive) {
+    // --- NEW: 2A. Handle Instant Flash Burst Banishment ---
+    if (isFlashing) {
         const camDir = new THREE.Vector3();
         camera.getWorldDirection(camDir);
 
         const ghostDir = new THREE.Vector3().subVectors(ghostMesh.position, camera.position).normalize();
         const dot = camDir.dot(ghostDir);
 
-        // If the player is shining the light directly at it (dot > 0.9) and it's within 80 units
+        // Wide AoE: dot > 0.4 gives roughly a 130-degree cone in front of the player, within 100 units
+        if (dot > 0.4 && distToPlayer < 100) {
+            pickRandomTarget();
+            ghostMesh.position.copy(targetPos);
+            
+            state = 'ROAM';
+            lightBurnTimer = 0;
+            timeStaring = 0;
+            ghostMesh.material.opacity = 1.0; 
+            stareMessageUI.style.opacity = '0';
+            visionCooldown = 5.0; 
+            return; // Ghost is gone! Skip the rest of the frame.
+        }
+    }
+
+    // --- 2B. Handle Gradual Flashlight Banishment (The "Burn" Mechanic) ---
+    let isBeingLookedAt = false;
+
+    if (isFlashlightActive && !isFlashing) {
+        const camDir = new THREE.Vector3();
+        camera.getWorldDirection(camDir);
+
+        const ghostDir = new THREE.Vector3().subVectors(ghostMesh.position, camera.position).normalize();
+        const dot = camDir.dot(ghostDir);
+
+        // Tight beam (dot > 0.9) within 80 units
         if (dot > 0.9 && distToPlayer < 80) {
             isBeingLookedAt = true;
         }
@@ -124,26 +146,21 @@ export function updateGhost(ghostMesh, camera, delta) {
 
     if (isBeingLookedAt) {
         lightBurnTimer += delta;
-        // Fade out as it burns
         ghostMesh.material.opacity = Math.max(0, 1.0 - (lightBurnTimer / BURN_TIME_REQUIRED));
 
-        // Banished!
         if (lightBurnTimer >= BURN_TIME_REQUIRED) {
-            // Teleport far away
             pickRandomTarget();
             ghostMesh.position.copy(targetPos);
             
-            // Reset states
             state = 'ROAM';
             lightBurnTimer = 0;
             timeStaring = 0;
-            ghostMesh.material.opacity = 1.0; // Restore opacity for next time
+            ghostMesh.material.opacity = 1.0; 
             stareMessageUI.style.opacity = '0';
-            visionCooldown = 5.0; // Give the player a 5-second grace period from visions
-            return; // Skip the rest of the logic this frame
+            visionCooldown = 5.0; 
+            return; 
         }
     } else {
-        // Slowly recover opacity if the player looks away before the 3 seconds are up
         if (lightBurnTimer > 0) {
             lightBurnTimer -= delta;
             ghostMesh.material.opacity = Math.min(1.0, 1.0 - (lightBurnTimer / BURN_TIME_REQUIRED));
@@ -188,7 +205,7 @@ export function updateGhost(ghostMesh, camera, delta) {
     } 
     else if (state === 'CHASE') {
         ghostMesh.material.map = texChase; 
-        ghostLight.intensity = Math.max(0, 5 * ghostMesh.material.opacity); // Dim red glow as it fades
+        ghostLight.intensity = Math.max(0, 5 * ghostMesh.material.opacity); 
         stareMessageUI.style.opacity = '0'; 
         
         moveTowards(ghostMesh, camera.position.x, camera.position.z, SPEED_CHASE, delta);
