@@ -1,13 +1,12 @@
-// inv.js
-export let isInvOpen = false;
+import { reloadFlashlight } from './flashlight.js';
 
-// We store items as objects now to hold their image path, name, and lore text
-export const inventory = [
+export let isInvOpen = false;
+export let inventory = [
     { 
         id: 'battery', 
         name: 'Flashlight Battery', 
         img: 'textures/battery.png', 
-        desc: 'A standard D-cell battery. useful for charging the flashlight when the first batteries dies.' 
+        desc: 'A standard D-cell battery. Useful for charging the flashlight when the first batteries die.' 
     }
 ];
 
@@ -20,7 +19,7 @@ export function initInventory(pointerLockCallback) {
     const inspectText = document.getElementById('inspect-text');
 
     function renderInventory() {
-        slotContainer.innerHTML = ''; // Clear existing
+        slotContainer.innerHTML = ''; 
         
         for (let i = 0; i < MAX_SLOTS; i++) {
             const slot = document.createElement('div');
@@ -32,52 +31,80 @@ export function initInventory(pointerLockCallback) {
                 img.src = item.img;
                 slot.appendChild(img);
                 
-                // Handle selecting the item to inspect it
                 slot.onclick = () => {
-                    // Remove active class from all, add to this one
                     document.querySelectorAll('.inv-slot').forEach(s => s.classList.remove('active'));
                     slot.classList.add('active');
                     
                     inspectImg.src = item.img;
                     inspectImg.style.display = 'block';
-                    inspectText.innerHTML = `<strong>${item.name}</strong><br><br>${item.desc}`;
+                    
+                    // Create basic text
+                    inspectText.innerHTML = `<strong>${item.name}</strong><br><br>${item.desc}<br><br>`;
+                    
+                    // Add "USE" button if the item is a battery
+                    if (item.id === 'battery') {
+                        const useBtn = document.createElement('button');
+                        useBtn.innerText = "[ INSERT BATTERIES ]";
+                        useBtn.style.marginTop = "10px";
+                        useBtn.style.padding = "5px 10px";
+                        useBtn.style.cursor = "pointer";
+                        useBtn.style.fontFamily = "'Courier New', monospace";
+                        
+                        useBtn.onclick = () => {
+                            useItem(i);
+                            renderInventory(); // Refresh view
+                            // Optional: Close inventory automatically on use
+                            // toggleInventory(); 
+                        };
+                        inspectText.appendChild(useBtn);
+                    }
                 };
             }
-            
             slotContainer.appendChild(slot);
         }
     }
 
-    // Listen for the 'E' key
+    function toggleInventory() {
+        isInvOpen = !isInvOpen;
+        if (isInvOpen) {
+            invOverlay.style.display = 'flex';
+            inspectImg.style.display = 'none';
+            inspectText.innerText = "Select an item to inspect.";
+            renderInventory();
+            pointerLockCallback(false);
+        } else {
+            invOverlay.style.display = 'none';
+            pointerLockCallback(true);
+        }
+    }
+
     document.addEventListener('keydown', (e) => {
-        // Don't allow opening inventory if tutorial is still active
         const tutorial = document.getElementById('tutorial-overlay');
         if (tutorial.style.display !== 'none' && tutorial.style.opacity !== '0') return;
 
         if (e.code === 'KeyE') {
-            isInvOpen = !isInvOpen;
-            
-            if (isInvOpen) {
-                invOverlay.style.display = 'flex';
-                inspectImg.style.display = 'none'; // Reset inspect view
-                inspectText.innerText = "Select an item to inspect.";
-                renderInventory();
-                pointerLockCallback(false); // Unlock the mouse so user can click
-            } else {
-                invOverlay.style.display = 'none';
-                pointerLockCallback(true); // Lock the mouse back to the game
-            }
+            toggleInventory();
         }
     });
 }
 
-// Utility functions for later use in your game logic
+function useItem(index) {
+    const item = inventory[index];
+    if (item.id === 'battery') {
+        reloadFlashlight();
+        // Remove the battery from inventory after use
+        inventory.splice(index, 1);
+        document.getElementById('inspect-image').style.display = 'none';
+        document.getElementById('inspect-text').innerText = "Batteries inserted. The light feels strong again.";
+    }
+}
+
 export function addItem(itemObj) {
     if (inventory.length < MAX_SLOTS) {
         inventory.push(itemObj);
         return true;
     }
-    return false; // Inventory full
+    return false;
 }
 
 export function hasItem(itemId) {
