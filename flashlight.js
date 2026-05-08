@@ -4,8 +4,9 @@ import { addItem } from './inv.js';
 // Import the tracker override so turning on the flashlight disables the tracker
 import { forceTrackerOff } from './tracker.js'; 
 
-// Unified state variable (The Ghost and Tracker scripts look for this exact name)
+// Unified state variables
 export let isFlashlightActive = false; 
+export let isFlashing = false; // NEW: The Ghost script will look for this!
 
 let batteryLevel = 100;
 let isDead = false;
@@ -15,6 +16,7 @@ const MAX_BATTERY_LIFE_SEC = 300;
 const DRAIN_RATE = 100 / MAX_BATTERY_LIFE_SEC; 
 
 export function createFlashlight(camera) {
+    // Base intensity of 2. We will spike this during the flash.
     flashlightLight = new THREE.SpotLight(0xffffff, 2, 40, Math.PI / 6, 0.5, 1);
     flashlightLight.position.set(0.5, -0.5, -0.5); 
     flashlightLight.visible = false;
@@ -27,23 +29,60 @@ export function createFlashlight(camera) {
     camera.add(flashlightLight);
 
     document.addEventListener('keydown', (e) => {
+        // Toggle Flashlight
         if (e.code === 'KeyF' && !isDead) {
             toggleFlashlight();
+        }
+        
+        // NEW: Trigger Flash Burst
+        // Only allow a flash if we aren't dead, aren't already flashing, and have at least 10% battery
+        if (e.code === 'Space' && !isDead && !isFlashing && batteryLevel >= 10) {
+            triggerFlash();
         }
     });
 
     return flashlightLight;
 }
 
-// --- NEW RELOAD FUNCTION ---
+// --- NEW BURST MECHANIC ---
+function triggerFlash() {
+    isFlashing = true;
+    batteryLevel -= 10;
+    updateBatteryUI(batteryLevel);
+    
+    // Temporarily max out the light to simulate a blinding flash
+    const previousVisibility = flashlightLight.visible;
+    const previousIntensity = flashlightLight.intensity;
+    const previousAngle = flashlightLight.angle;
+
+    // Force the light on, make it massive and extremely bright
+    flashlightLight.visible = true;
+    flashlightLight.intensity = 500; 
+    flashlightLight.angle = Math.PI / 2; // Widens the beam to 90 degrees
+
+    // Turn the flash off after a split second (150 milliseconds)
+    setTimeout(() => {
+        isFlashing = false;
+        
+        // Revert to how it was before the flash
+        flashlightLight.visible = previousVisibility;
+        flashlightLight.intensity = previousIntensity;
+        flashlightLight.angle = previousAngle;
+
+        // If that blast killed the battery, shut it down
+        if (batteryLevel <= 0) {
+            killBattery();
+        }
+    }, 150);
+}
+
 export function reloadFlashlight() {
     batteryLevel = 100;
     isDead = false;
     updateBatteryUI(100);
     
-    // Automatically turn on and flicker when new batteries are in
     isFlashlightActive = true;
-    forceTrackerOff(); // Disable tracker if it was out
+    forceTrackerOff(); 
     
     flickerEffect(() => {
         flashlightLight.visible = true;
@@ -55,7 +94,7 @@ function toggleFlashlight() {
     isFlashlightActive = !isFlashlightActive;
     
     if (isFlashlightActive) {
-        forceTrackerOff(); // Put away the tracker if we turn the flashlight on
+        forceTrackerOff(); 
     }
 
     flickerEffect(() => {
@@ -79,35 +118,38 @@ function flickerEffect(callback) {
 export function updateFlashlight(delta) {
     if (isDead) return;
     
-    if (isFlashlightActive) {
+    if (isFlashlightActive && !isFlashing) {
         batteryLevel -= DRAIN_RATE * delta;
         updateBatteryUI(batteryLevel);
 
         if (batteryLevel <= 0) {
-            batteryLevel = 0;
-            isDead = true;
-            isFlashlightActive = false;
-            flashlightLight.visible = false;
-            toggleFlashlightUI(false);
-            
-            // Give the player a dead battery item
-            addItem({
-                id: 'dead_battery',
-                name: 'Spent Battery',
-                img: 'textures/deadbattery.png', 
-                desc: 'Completely drained. It feels light and useless now.'
-            });
+            killBattery();
         }
     }
 }
 
-// --- CALLED BY TRACKER TO FORCE FLASHLIGHT OFF ---
+// Helper to handle the flashlight dying cleanly
+function killBattery() {
+    batteryLevel = 0;
+    isDead = true;
+    isFlashlightActive = false;
+    flashlightLight.visible = false;
+    toggleFlashlightUI(false);
+    
+    addItem({
+        id: 'dead_battery',
+        name: 'Spent Battery',
+        img: 'textures/deadbattery.png', 
+        desc: 'Completely drained. It feels light and useless now.'
+    });
+}
+
 export function forceFlashlightOff() {
     if (isFlashlightActive) {
         isFlashlightActive = false;
         if (typeof flashlightLight !== 'undefined') {
             flashlightLight.visible = false;
         }
-        toggleFlashlightUI(false); // Update the UI so it shows as off
+        toggleFlashlightUI(false); 
     }
 }
