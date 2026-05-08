@@ -5,7 +5,7 @@
     <title>DARK - The Forest</title>
 
     <script>
-        // The ultimate crash catcher. Upgraded to catch module loading failures.
+        // The ultimate crash catcher.
         function displayError(message, source, lineno) {
             const errorBox = document.createElement('div');
             errorBox.style.position = 'absolute';
@@ -50,6 +50,17 @@
             color: white; font-family: 'Courier New', monospace;
             text-shadow: 2px 2px black; pointer-events: none; z-index: 10;
         }
+
+        /* BATTERY BAR FOR TRACKER & FLASHLIGHT */
+        #battery-container {
+            position: absolute; bottom: 50px; left: 20px; width: 200px; height: 10px; 
+            border: 2px solid white; z-index: 10;
+        }
+        #battery-fill {
+            width: 100%; height: 100%; background-color: #ffffff; 
+            transition: width 0.1s, background-color 0.3s;
+        }
+
         #static-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.1) 2px, rgba(255,255,255,0.1) 4px);
@@ -78,6 +89,20 @@
         #tutorial-overlay img { max-width: 80%; max-height: 80%; object-fit: contain; }
         #tutorial-overlay p { color: #555; font-family: 'Courier New', monospace; margin-top: 20px; }
 
+        /* PAGE READING OVERLAY */
+        #page-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.9);
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 60; color: white; font-family: 'Courier New', monospace;
+        }
+        #page-overlay-img { max-height: 60%; margin-bottom: 20px; }
+        #page-overlay-text { max-width: 600px; text-align: center; font-size: 18px; line-height: 1.5; }
+        #page-overlay-close { 
+            margin-top: 20px; padding: 10px 20px; cursor: pointer; 
+            font-family: 'Courier New', monospace; background: #222; color: white; border: 1px solid white;
+        }
+
         /* INVENTORY OVERLAY */
         #inventory-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -85,35 +110,36 @@
             display: none; flex-direction: column; justify-content: center; align-items: center;
             z-index: 40; font-family: 'Courier New', monospace; color: white;
         }
-        
         #inspect-area {
             display: flex; width: 800px; height: 400px; margin-bottom: 30px;
             background-color: rgba(30, 30, 30, 0.5); border: 1px solid #444;
         }
-        
         #inspect-image-container {
             width: 50%; height: 100%; display: flex; justify-content: center; align-items: center;
             border-right: 1px solid #444; padding: 10px; box-sizing: border-box;
         }
-        
         #inspect-image { max-width: 100%; max-height: 100%; display: none; image-rendering: pixelated; }
-        
         #inspect-text {
             width: 50%; padding: 20px; box-sizing: border-box;
             font-size: 16px; line-height: 1.5; white-space: pre-wrap;
         }
-
         #inventory-slots { display: flex; gap: 10px; }
-        
         .inv-slot {
             width: 80px; height: 80px; background-color: rgba(50, 50, 50, 0.5);
             border: 2px solid #555; cursor: pointer; display: flex;
             justify-content: center; align-items: center; transition: border-color 0.2s;
         }
-        
         .inv-slot:hover { border-color: #fff; }
         .inv-slot img { max-width: 80%; max-height: 80%; pointer-events: none; }
         .inv-slot.active { border-color: #aa4444; }
+
+        /* WIN SCREEN */
+        #win-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: white; display: none; flex-direction: column; 
+            justify-content: center; align-items: center; z-index: 100; 
+            color: black; font-family: 'Courier New', monospace; opacity: 0; transition: opacity 3s;
+        }
     </style>
 </head>
 <body>
@@ -121,11 +147,19 @@
     <div id="static-overlay"></div>
     <div id="border-message" class="screen-message"></div>
     <div id="ghost-message" class="screen-message"></div>
+    
+    <div id="battery-container"><div id="battery-fill"></div></div>
     <div id="ui">Location: The Heart of the Woods</div>
 
     <div id="tutorial-overlay">
         <img src="pages/tut1.png" alt="How to play">
         <p>Click anywhere to wake up</p>
+    </div>
+
+    <div id="page-overlay">
+        <img id="page-overlay-img" src="" alt="Page">
+        <p id="page-overlay-text"></p>
+        <button id="page-overlay-close">[ FOLD & PUT AWAY ]</button>
     </div>
 
     <div id="inventory-overlay">
@@ -136,6 +170,11 @@
             <div id="inspect-text">Select an item to inspect.</div>
         </div>
         <div id="inventory-slots"></div>
+    </div>
+
+    <div id="win-overlay">
+        <h1 style="font-size: 48px;">THE CURSE IS BROKEN</h1>
+        <p style="font-size: 24px;">You survived the forest.</p>
     </div>
 
     <script type="importmap">
@@ -154,6 +193,8 @@
         import { updateGhost } from './ai.js';
         import { createFlashlight, updateFlashlight } from './flashlight.js';
         import { initLogs } from './logs.js'; 
+        import { initPages, updatePages } from './pages.js';
+        import { initTracker, updateTracker, pageLocations } from './tracker.js';
 
         // --- SCENE SETUP ---
         const scene = new THREE.Scene();
@@ -167,7 +208,6 @@
         renderer.setClearColor(0x050505); 
         document.body.appendChild(renderer.domElement);
 
-        // Initialize Flashlight (Attached to Camera)
         createFlashlight(camera);
 
         // --- LIGHTING ---
@@ -210,6 +250,24 @@
         const terrain = new THREE.Mesh(geometry, material);
         terrain.rotation.x = -Math.PI / 2;
         scene.add(terrain);
+
+        // --- RITUAL PENTAGRAM ---
+        const pentaTex = loader.load('textures/pentagram.png');
+        const pentaMat = new THREE.MeshStandardMaterial({ 
+            map: pentaTex, transparent: true, emissive: 0xff0000, emissiveIntensity: 0.8, depthWrite: false 
+        });
+        const pentaMesh = new THREE.Mesh(new THREE.PlaneGeometry(15, 15), pentaMat);
+        pentaMesh.rotation.x = -Math.PI / 2;
+        pentaMesh.position.set(0, 0.1, 0); // Center of map, just above terrain
+        scene.add(pentaMesh);
+
+        // --- WAYPOINT BEAM ---
+        const beamMat = new THREE.MeshBasicMaterial({ 
+            color: 0xff0000, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false 
+        });
+        const beamMesh = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 500, 16, 1, true), beamMat);
+        beamMesh.position.set(0, 250, 0); // Shooting into the sky
+        scene.add(beamMesh);
 
         // --- CLOUDS ---
         const cloudTex = loader.load('textures/cloud.png');
@@ -287,9 +345,10 @@
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
         const velocity = new THREE.Vector3();
         const direction = new THREE.Vector3();
+        let isReadingPage = false;
 
         const onKeyDown = (e) => {
-            if (isGamePaused || isInvOpen) return;
+            if (isGamePaused || isInvOpen || isReadingPage) return;
             switch (e.code) {
                 case 'KeyW': moveForward = true; break;
                 case 'KeyA': moveLeft = true; break;
@@ -309,13 +368,13 @@
         document.addEventListener('keyup', onKeyUp);
 
         document.body.addEventListener('click', () => {
-            if (!isGamePaused && !isInvOpen) {
+            if (!isGamePaused && !isInvOpen && !isReadingPage && !isGameWon) {
                 document.body.requestPointerLock();
             }
         });
 
         document.addEventListener('mousemove', (e) => {
-            if (document.pointerLockElement === document.body && !isGamePaused && !isInvOpen) {
+            if (document.pointerLockElement === document.body && !isGamePaused && !isInvOpen && !isReadingPage) {
                 camera.rotation.y -= e.movementX * 0.002;
                 camera.rotation.x -= e.movementY * 0.002;
                 camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
@@ -338,6 +397,47 @@
             }
         }); 
 
+        // --- PAGES, BEAM & WIN LOGIC ---
+        let beamTimer = 0;
+        let pagesCollectedCount = 0;
+        let isGameWon = false;
+
+        const pageOverlay = document.getElementById('page-overlay');
+        const pageOverlayImg = document.getElementById('page-overlay-img');
+        const pageOverlayText = document.getElementById('page-overlay-text');
+        const pageOverlayBtn = document.getElementById('page-overlay-close');
+
+        function onPageCollected(pageData) {
+            isReadingPage = true;
+            pagesCollectedCount++;
+            document.exitPointerLock();
+            moveForward = false; moveBackward = false; moveLeft = false; moveRight = false;
+
+            // Show reading overlay
+            pageOverlayImg.src = pageData.img;
+            pageOverlayText.innerText = pageData.text;
+            pageOverlay.style.display = 'flex';
+
+            // Trigger the Waypoint Beam at the Pentagram
+            if (pagesCollectedCount >= 8) {
+                beamMat.opacity = 0.8;
+                beamTimer = -1; // -1 means it stays on indefinitely
+                document.getElementById('ui').innerText = "OBJECTIVE: RETURN TO THE PENTAGRAM TO BREAK THE CURSE";
+            } else {
+                beamMat.opacity = 0.8;
+                beamTimer = 10.0; // 10 second fade out
+            }
+        }
+
+        pageOverlayBtn.addEventListener('click', () => {
+            pageOverlay.style.display = 'none';
+            isReadingPage = false;
+            document.body.requestPointerLock();
+        });
+
+        initTracker(camera);
+        initPages(scene, camera.position, onPageCollected);
+
         const borderMsgElem = document.getElementById('border-message');
         const RENDER_DIST_SQ = 230 * 230; 
         const clock = new THREE.Clock();
@@ -347,14 +447,34 @@
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
 
-            if (!isGamePaused && !isInvOpen) {
-                // 1. Update Flashlight Battery
+            // Handle Beam Fade Out
+            if (beamTimer > 0) {
+                beamTimer -= delta;
+                beamMat.opacity = Math.max(0, (beamTimer / 10) * 0.8);
+            }
+
+            // Win Condition Check
+            if (pagesCollectedCount >= 8 && !isGameWon) {
+                const distToPentagram = Math.sqrt(camera.position.x * camera.position.x + camera.position.z * camera.position.z);
+                if (distToPentagram < 6.0) {
+                    isGameWon = true;
+                    document.exitPointerLock();
+                    const winScreen = document.getElementById('win-overlay');
+                    winScreen.style.display = 'flex';
+                    // Trigger fade to white
+                    setTimeout(() => { winScreen.style.opacity = '1'; }, 100); 
+                }
+            }
+
+            if (!isGamePaused && !isInvOpen && !isReadingPage && !isGameWon) {
                 updateFlashlight(delta);
+                updateTracker(camera, delta);
+                updatePages(scene, camera, delta, pageLocations);
 
                 const oldX = camera.position.x;
                 const oldZ = camera.position.z;
 
-                // 2. Movement Physics
+                // Movement Physics
                 velocity.x -= velocity.x * 10.0 * delta;
                 velocity.z -= velocity.z * 10.0 * delta;
 
@@ -368,7 +488,7 @@
                 camera.translateX(-velocity.x * delta);
                 camera.translateZ(-velocity.z * delta);
                 
-                // 3. Boundaries
+                // Boundaries
                 const mapLimit = (terrainSize / 2) - 5; 
                 const minEdgeDist = Math.min(mapLimit - Math.abs(camera.position.x), mapLimit - Math.abs(camera.position.z));
 
@@ -382,7 +502,7 @@
                     borderMsgElem.style.opacity = 0;
                 }
 
-                // 4. Culling & Collision
+                // Culling & Collision
                 let isColliding = false;
                 for (let i = 0; i < treeData.length; i++) {
                     const tree = treeData[i];
@@ -402,7 +522,7 @@
                     velocity.x = 0; velocity.z = 0;
                 }
 
-                // 5. Ghost AI & Static UI
+                // Ghost AI & Static UI
                 const distToGhost = camera.position.distanceTo(ghostMesh.position);
                 updateUIStatic(distToGhost);
                 if (distToGhost < 15) showGhostWarning();
@@ -411,7 +531,7 @@
                 ghostMesh.lookAt(camera.position.x, ghostMesh.position.y, camera.position.z);
                 camera.position.y = getElevation(camera.position.x, camera.position.z) + 1.7; 
                 
-                // 6. Environment Animation
+                // Environment Animation
                 cloudTex.offset.x += 0.02 * delta;
                 cloudTex.offset.y += 0.01 * delta;
             }
