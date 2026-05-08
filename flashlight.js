@@ -1,9 +1,12 @@
-export let isFlashlightActive = false; // Make sure 'export' is written here!
 import * as THREE from 'three';
 import { toggleFlashlightUI, updateBatteryUI } from './ui.js';
 import { addItem } from './inv.js';
+// Import the tracker override so turning on the flashlight disables the tracker
+import { forceTrackerOff } from './tracker.js'; 
 
-export let isFlashlightOn = false;
+// Unified state variable (The Ghost and Tracker scripts look for this exact name)
+export let isFlashlightActive = false; 
+
 let batteryLevel = 100;
 let isDead = false;
 let flashlightLight;
@@ -37,8 +40,11 @@ export function reloadFlashlight() {
     batteryLevel = 100;
     isDead = false;
     updateBatteryUI(100);
+    
     // Automatically turn on and flicker when new batteries are in
-    isFlashlightOn = true;
+    isFlashlightActive = true;
+    forceTrackerOff(); // Disable tracker if it was out
+    
     flickerEffect(() => {
         flashlightLight.visible = true;
         toggleFlashlightUI(true);
@@ -46,10 +52,15 @@ export function reloadFlashlight() {
 }
 
 function toggleFlashlight() {
-    isFlashlightOn = !isFlashlightOn;
+    isFlashlightActive = !isFlashlightActive;
+    
+    if (isFlashlightActive) {
+        forceTrackerOff(); // Put away the tracker if we turn the flashlight on
+    }
+
     flickerEffect(() => {
-        flashlightLight.visible = isFlashlightOn;
-        toggleFlashlightUI(isFlashlightOn);
+        flashlightLight.visible = isFlashlightActive;
+        toggleFlashlightUI(isFlashlightActive);
     });
 }
 
@@ -67,18 +78,19 @@ function flickerEffect(callback) {
 
 export function updateFlashlight(delta) {
     if (isDead) return;
-    if (isFlashlightOn) {
+    
+    if (isFlashlightActive) {
         batteryLevel -= DRAIN_RATE * delta;
         updateBatteryUI(batteryLevel);
 
         if (batteryLevel <= 0) {
             batteryLevel = 0;
             isDead = true;
-            isFlashlightOn = false;
+            isFlashlightActive = false;
             flashlightLight.visible = false;
             toggleFlashlightUI(false);
             
-            // Corrected dead battery texture path
+            // Give the player a dead battery item
             addItem({
                 id: 'dead_battery',
                 name: 'Spent Battery',
@@ -86,5 +98,16 @@ export function updateFlashlight(delta) {
                 desc: 'Completely drained. It feels light and useless now.'
             });
         }
+    }
+}
+
+// --- CALLED BY TRACKER TO FORCE FLASHLIGHT OFF ---
+export function forceFlashlightOff() {
+    if (isFlashlightActive) {
+        isFlashlightActive = false;
+        if (typeof flashlightLight !== 'undefined') {
+            flashlightLight.visible = false;
+        }
+        toggleFlashlightUI(false); // Update the UI so it shows as off
     }
 }
