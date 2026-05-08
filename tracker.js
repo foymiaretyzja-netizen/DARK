@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+// Import the flashlight override!
+import { forceFlashlightOff } from './flashlight.js';
 
 // --- TRACKER STATE ---
 export let isTrackerActive = false;
@@ -11,13 +13,13 @@ let isOnCooldown = false;
 let trackerLight;
 let uiBarFill; 
 
-// We will populate this later when we build pages.js
 export let pageLocations = []; 
 
 export function initTracker(camera) {
-    // 1. Create the Tracker Beam (A tight, eerie green spotlight)
-    trackerLight = new THREE.SpotLight(0x44ff44, 0, 150, Math.PI / 10, 0.5, 2);
-    trackerLight.position.set(0.5, -0.5, -0.5); // Offset to the right side of the screen
+    // 1. Create the Tracker Beam
+    // The base intensity starts at 0, we control it dynamically in updateBeamIntensity
+    trackerLight = new THREE.SpotLight(0x44ff44, 0, 150, Math.PI / 8, 0.5, 2);
+    trackerLight.position.set(0.5, -0.5, -0.5); 
     trackerLight.target.position.set(0, 0, -1);
     
     camera.add(trackerLight);
@@ -26,7 +28,6 @@ export function initTracker(camera) {
 
     // 2. Input Listener (Q to toggle)
     document.addEventListener('keydown', (e) => {
-        // Prevent triggering if a tutorial/menu is open
         const tutorial = document.getElementById('tutorial-overlay');
         if (tutorial && tutorial.style.display !== 'none' && tutorial.style.opacity !== '0') return;
 
@@ -37,27 +38,28 @@ export function initTracker(camera) {
 }
 
 function toggleTracker() {
-    // Cannot turn it on if it's dead and cooling down
     if (isOnCooldown) return;
 
     isTrackerActive = !isTrackerActive;
     trackerLight.visible = isTrackerActive;
     
-    // Grab the existing battery bar dynamically so we can hijack its visual state
     if (!uiBarFill) uiBarFill = document.getElementById('battery-fill');
     
     if (isTrackerActive) {
-        // Optional: If you want Q to auto-disable the flashlight, you would call a flashlight disable function here
-        if (uiBarFill) uiBarFill.style.backgroundColor = '#44ff44'; // Turn UI bar green
+        if (uiBarFill) uiBarFill.style.backgroundColor = '#44ff44'; 
+        
+        // Turn off the flashlight when we pull out the tracker
+        if (typeof forceFlashlightOff === 'function') {
+            forceFlashlightOff();
+        }
     } else {
-        if (uiBarFill) uiBarFill.style.backgroundColor = '#ffffff'; // Revert to normal flashlight color
+        if (uiBarFill) uiBarFill.style.backgroundColor = '#ffffff'; 
     }
 }
 
-// Calculates how directly the camera is looking at the closest page
 function updateBeamIntensity(camera) {
     if (pageLocations.length === 0) {
-        trackerLight.intensity = 2; // Default dim glow if no pages exist yet
+        trackerLight.intensity = 50; // A dim green glow if no pages exist yet
         return;
     }
 
@@ -68,31 +70,30 @@ function updateBeamIntensity(camera) {
     const camPos = new THREE.Vector3();
     camera.getWorldPosition(camPos);
 
-    // Check all pages to find the one we are looking at most directly
     for (let pos of pageLocations) {
-        const dirToPage = new THREE.Vector3().subVectors(pos, camPos).normalize();
-        const dot = camDir.dot(dirToPage); // 1.0 means looking dead at it, -1.0 means it's behind us
+        // Important: we ignore the Y axis so the player doesn't have to look up/down perfectly
+        const flatPos = new THREE.Vector3(pos.x, camPos.y, pos.z);
+        const dirToPage = new THREE.Vector3().subVectors(flatPos, camPos).normalize();
+        const dot = camDir.dot(dirToPage); 
         if (dot > maxDot) maxDot = dot;
     }
 
-    // If our view is highly aligned with a page (dot > 0.85), ramp up the brightness
+    // If our view is highly aligned with a page (dot > 0.85)
     if (maxDot > 0.85) {
-        // Ramp intensity from 2 up to 15 the closer you look at it
-        const alignment = (maxDot - 0.85) / 0.15; // Normalizes the 0.85 - 1.0 range to 0 - 1
-        trackerLight.intensity = 2 + (alignment * 13);
+        // Ramp intensity from 50 up to 800 the closer you look at it
+        const alignment = (maxDot - 0.85) / 0.15; 
+        trackerLight.intensity = 50 + (alignment * 750);
     } else {
-        trackerLight.intensity = 2; // Not looking at a page
+        trackerLight.intensity = 50; 
     }
 }
 
 export function updateTracker(camera, delta) {
     if (!uiBarFill) uiBarFill = document.getElementById('battery-fill');
 
-    // Handle Cooldown State
     if (isOnCooldown) {
         cooldownTimer -= delta;
         
-        // Update UI to show the recharge progress (turns red to indicate broken/recharging)
         if (uiBarFill) {
             uiBarFill.style.backgroundColor = '#ff4444';
             uiBarFill.style.width = `${(1 - (cooldownTimer / COOLDOWN_TIME)) * 100}%`;
@@ -100,13 +101,12 @@ export function updateTracker(camera, delta) {
 
         if (cooldownTimer <= 0) {
             isOnCooldown = false;
-            energy = MAX_ENERGY; // Fully recharged and ready to use
-            if (uiBarFill) uiBarFill.style.backgroundColor = '#ffffff'; // Reset to default
+            energy = MAX_ENERGY; 
+            if (uiBarFill) uiBarFill.style.backgroundColor = '#ffffff'; 
         }
         return;
     }
 
-    // Handle Active Drain State
     if (isTrackerActive) {
         energy -= delta;
         
@@ -115,7 +115,6 @@ export function updateTracker(camera, delta) {
         }
 
         if (energy <= 0) {
-            // Battery died! Force it off and trigger cooldown
             isTrackerActive = false;
             trackerLight.visible = false;
             isOnCooldown = true;
@@ -123,7 +122,15 @@ export function updateTracker(camera, delta) {
             return;
         }
 
-        // Pulse the beam based on page proximity
         updateBeamIntensity(camera);
+    }
+}
+
+// Function to allow the flashlight to force the tracker off if the player presses F
+export function forceTrackerOff() {
+    if (isTrackerActive) {
+        isTrackerActive = false;
+        trackerLight.visible = false;
+        if (uiBarFill && !isOnCooldown) uiBarFill.style.backgroundColor = '#ffffff';
     }
 }
